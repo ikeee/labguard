@@ -7,7 +7,7 @@ using Microsoft.Win32;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// 注册表权限加固（代替原版的 regini.exe + regqx.ini）：
+    /// 注册表权限加固（不使用外部工具，直接用 .NET 注册表权限 API）：
     /// 把配置键设为"普通用户只读、管理员/SYSTEM 完全控制"，使学生无法改配置。
     /// </summary>
     public sealed class RegistryAclGuard : GuardBase

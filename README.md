@@ -1,4 +1,4 @@
-# 机房管理助手（复刻版）
+# LabGuard
 
 **当前版本：v0.01**（2026-09-24 首个公开版本）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
 
@@ -9,26 +9,28 @@
 > **every single policy has its own on/off switch**.
 > **AdGuard is optional**: the program works with no DNS filtering at all; if you run AdGuard on the teacher PC,
 > you can additionally turn on "lock students' DNS to it" (off by default). Details below.
-> It is a clean-room reimplementation — no binaries from the original closed-source tool are included.
+> It is an independent, clean-room implementation — it contains no code, assets or binaries from any third-party product.
 > There is always a teacher escape hatch: `scripts/cleanup-all.ps1` fully uninstalls and reverts everything.
 > Docs are in Chinese (target: Chinese K-12 lab teachers).
 
-对 Windows 学生机房常见"学生端管控软件"的**开源复刻实现**。功能定位与原版《学生机房管理助手 v13.03》等价：
-保护电子教室（极域/红蜘蛛/锐捷云课堂）不被学生脱控、规范机房上机行为、统一壁纸与机器编号。
+**LabGuard** 是一套面向学校计算机机房的开源**学生机管控程序**：
+保护课堂软件（极域 / 红蜘蛛 / 锐捷云课堂）不被学生脱离控制、规范机房上机行为
+（下载、小游戏、任务管理器、U 盘、浏览器下载等）、统一壁纸与机位编号，并可选配合集中 DNS 做上网过滤。
 
-> 本目录是**独立实现**，不含、也不依赖原版程序的任何文件；原理分析见 [docs/01-原理分析-原版学生机房管理助手v13.03.md](docs/01-原理分析-原版学生机房管理助手v13.03.md)。
+> 本仓库只包含**自己的实现与文档**：不含任何第三方程序的代码、素材或二进制文件。
+> 功能清单与全部开关见 [docs/03-功能与开关清单.md](docs/03-功能与开关清单.md)。
 
 ---
 
 ## 1. 组成
 
-| 程序 | 对应原版 | 作用 |
+| 程序 | 角色 | 作用 |
 |---|---|---|
-| `LabGuard.Service.exe` | `zmserv.exe` | Windows 服务（SYSTEM）：hosts 黑名单、USB 存储禁用、注册表权限加固、安全模式限制、浏览器组策略、新文件监控、守护代理进程 |
-| `LabGuard.Agent.exe` | `about.exe` + `jfglzsn.exe` + `przs.exe` | 托盘小助手：电子教室保护、网络/IP/防火墙守护、违规软件拦截、任务栏与 Win 键策略、桌面壁纸与编号、互相守护；系统功能菜单（设置/暂停/退出，均需密码） |
-| `LabGuard.Settings.exe` | `set.exe` | 设置程序：密码 + 15 组策略开关 + 壁纸选择 |
-| `LabGuard.Uninstall.exe` | `uninstall.exe` | 卸载并**逐项还原**系统设置 |
-| `LabGuard.Launcher.exe` | `zy\*.exe` | 浏览器"上网入口"（可选，默认不接管快捷方式；原版用 9 个冒充浏览器的假程序做主页推广，本复刻不冒充） |
+| `LabGuard.Service.exe` | 守护服务 | Windows 服务（SYSTEM）：hosts 黑名单、USB 存储禁用、注册表权限加固、安全模式限制、浏览器组策略、新文件监控、守护代理进程 |
+| `LabGuard.Agent.exe` | 托盘交互 | 托盘小助手：电子教室保护、网络/IP/防火墙守护、违规软件拦截、任务栏与 Win 键策略、桌面壁纸与编号、互相守护；系统功能菜单（设置/暂停/退出，均需密码） |
+| `LabGuard.Settings.exe` | 配置界面 | 设置程序：密码 + 14 组 / 94 项策略开关 + 导入导出 |
+| `LabGuard.Uninstall.exe` | 卸载 | 卸载并**逐项还原**系统设置 |
+| `LabGuard.Launcher.exe` | 上网入口（可选） | 按设置里的主页启动学生机上的**真实浏览器**；默认不接管快捷方式，也不冒充任何软件 |
 | `LabGuard.SelfTest.exe` | — | 自检：验证口令/hosts/拦截清单，并用**干跑模式**完整启动-停止引擎（不修改系统） |
 
 ## 1.5 ⚠️ AdGuard（以及"上网管控"）是**可选项**，不是前置条件
@@ -56,7 +58,7 @@
 | 向导步骤 | 你要做的事 |
 |---|---|
 | 1. 欢迎 | 看一遍它会做什么（含"不卸杀毒、不改 UAC、不劫持主页"），勾选"我已阅读并了解" |
-| 2. 安装位置 | 默认 `C:\f<本机内存指纹>`（原版同款，学生不容易找到）；也可自定义（如 `C:\LabGuard`） |
+| 2. 安装位置 | 默认 `C:\Program Files\LabGuard`（普通用户不可写、不可随手删）；也可自定义 |
 | 3. 设置密码 | 输两遍；6 位及以上字母数字，弱口令会被拒绝 |
 | 4. **功能开关（94 项）** | 先套预设（普通PC机房 / 一体机机房 / 只管电子教室 / 全部放开），再逐项勾选；**AdGuard 相关的"集中 DNS"就在这里，不勾就是 A 档** |
 | 5. 安装 | 点【开始安装】→ 实时日志 → 完成后可勾"立即启用监控"，并可一键打开设置复核 |
@@ -64,15 +66,15 @@
 装完自检（3 分钟）：
 
 ```powershell
-# 在安装目录里（默认 C:\f<内存指纹>，用 --show-config 能看到实际路径）
+# 在安装目录里（默认 C:\Program Files\LabGuard；实际路径可用 --show-config 查看）
 LabGuard.SelfTest.exe            # 全绿才算装好
 LabGuard.Settings.exe --show-config   # 核对当前策略（含"集中 DNS 是否为未配置"）
 ```
 
-卸载：开始菜单 →「机房管理助手」→ 卸载（**要密码**）。
+卸载：开始菜单 →「LabGuard」→ 卸载（**要密码**）。
 
 > **顺序很重要**：装好后默认禁用 U 盘，所以**先把安装包拷进机器，再安装**；之后要用 U 盘就用密码暂停小助手。
-> **不需要**卸载杀毒软件、**不需要**把 UAC 改成"从不通知"（与原版不同）；把安装目录加入杀软白名单即可。
+> **不需要**卸载杀毒软件、**不需要**把 UAC 改成"从不通知"（与不同）；把安装目录加入杀软白名单即可。
 > **先在 1 台学生机上试用一周**（含一次真实课堂），确认与你的电子教室 / 考试软件（mpython、3D One、人机对话等）兼容后再批量部署。
 
 ### 2.1 批量部署 / 无人值守（可选，脚本方式）
@@ -104,9 +106,9 @@ LabGuard-Setup-v0.01.exe --silent --password "你的密码123" [--config presets
   - `LabGuard.SelfTest.exe` 的 `[7] 设置项覆盖` 会反射遍历 `GuardConfig`，若某个配置项没有对应开关、或某个开关指向了不存在的字段、或 Get/Set 接错字段 → **直接报 FAIL**（当前：80 项全覆盖、0 隐藏项、80 个开关读写正确）。
   - `LabGuard.Settings.exe --selftest-ui` 会真正构建一次界面并统计控件数（不显示窗口），用于确认"每个开关都渲染出来了"。
 
-## 3. 功能对照（摘要，完整版见 docs/03）
+## 3. 功能一览（摘要，完整版见 [docs/03](docs/03-功能与开关清单.md)）
 
-| 能力 | 复刻实现 |
+| 能力 | 实现方式 |
 |---|---|
 | 电子教室进程被挂起 | 轮询线程状态，检出即 `NtResumeProcess` 强制恢复 |
 | 电子教室进程被结束 | 按配置路径/自动探测重新拉起 |
@@ -117,14 +119,14 @@ LabGuard-Setup-v0.01.exe --silent --password "你的密码123" [--config presets
 | 断网**响鸣** | 断网满 N 秒后「嘀嘀嘀」**有限次数**（默认 60 秒后响 3 次 × 700ms，可关/可调），避免变成"学生拔线制造噪音"的新玩法 |
 | 改 IP | 与启动时基线比对，`netsh` 还原原 IP（DHCP 则 `source=dhcp`） |
 | 开防火墙"阻止所有传入连接" | 读 `FirewallPolicy` 三个 profile，`netsh advfirewall set allprofiles state off` |
-| 破解/脱控工具、进程工具、虚拟桌面、杀软管家、解压软件 | 进程名 + 窗口标题双表拦截（清单来自原版字符串还原） |
+| 破解/脱控工具、进程工具、虚拟桌面、杀软管家、解压软件 | 进程名 + 窗口标题双表拦截（清单来自字符串还原） |
 | 小游戏（扫雷/纸牌/…/Chrome 小恐龙/Edge 冲浪） | 进程拦截 + `Image File Execution Options\Debugger=null` + 浏览器组策略 |
 | 任务管理器 / 注册表 / cmd | 组策略键 + 窗口标题拦截（可逐项开关） |
 | 任务视图（虚拟桌面）与 Win 键 | `ShowTaskViewButton=0` + 低级键盘钩子吞掉 Win 键 |
 | 新 exe/reg/bat/zip… 文件 | `FileSystemWatcher` 监控下载目录与根目录，三档模式（全部允许 / 仅 C++ / 全部禁止） |
 | USB 存储设备 | `usbstor` 驱动 `Start=4`（键鼠保留），被改回即告警并重新禁用 |
 | **上网管控（可选三档，见 §1.5）** | ① 不控（默认）② **本地 hosts 黑名单**（内置 75 条 + 自定义，纯本机）③ **集中 DNS 锁定**（可选，配合教师机 AdGuard：DNS 被改即 `netsh` 改回、关闭 Chrome/Edge/Firefox/Win11 的 **DoH**、带 AdGuard 存活探针） |
-| 下载站/网盘/游戏站 | **默认关闭**（有集中 DNS 就不需要）。开启时：hosts 受管区块（原版 75 条清单 + 自定义）、隐藏、被删被改即恢复；**不开也保护 hosts**：ACL 收紧为普通用户只读 + **内容守候**（学生哪怕用管理员权限往里写映射，也在 20 秒内被还原并记日志） |
+| 下载站/网盘/游戏站 | **默认关闭**（有集中 DNS 就不需要）。开启时：hosts 受管区块（ 75 条清单 + 自定义）、隐藏、被删被改即恢复；**不开也保护 hosts**：ACL 收紧为普通用户只读 + **内容守候**（学生哪怕用管理员权限往里写映射，也在 20 秒内被还原并记日志） |
 | 浏览器下载/另存为/开发者工具/小恐龙/冲浪 | Chrome/Edge/Firefox/IE 组策略（不碰浏览器本体） |
 | 带网络的安全模式 | 删除 `SafeBoot\Network`（删除前导出 `.reg` 备份，退出/卸载时还原） |
 | 桌面壁纸 + 机器编号 | 6 张自绘规范壁纸，实时合成"计算机名后 6 位"到右上角 |
@@ -134,7 +136,9 @@ LabGuard-Setup-v0.01.exe --silent --password "你的密码123" [--config presets
 | 抗破解（停服务/删目录） | 服务 DACL 去掉了普通用户的"停止"权、异常终止 5 秒自动重启、**服务镜像放在仅 SYSTEM/管理员可访问的备份副本目录**、程序文件被删/被改**自动恢复**、配置文件有注册表加密镜像（删了自动恢复并报警）、可选**心跳上报**给教师端监视器 —— 详见 [docs/05-防破解与应急.md](docs/05-防破解与应急.md) |
 | 老师后路 | **安全模式（无网络）不加载任何管控**（默认；可在设置第 10 组改为"安全模式也管控"）+ `scripts\cleanup-all.ps1` 一键彻底卸载还原（纯 PowerShell、不依赖安装目录里的文件、安全模式可用） |
 
-## 4. 与原版刻意不同的地方（重要）
+## 4. 设计取舍（为什么这样做）
+
+以下每条都是**刻意选择**，目的是"管得住，但不把自己变成事故源"：
 
 ### 4.0 场景：一体机机房（有线为主 + 无线常开做热点）
 
@@ -158,12 +162,14 @@ LabGuard-Setup-v0.01.exe --silent --password "你的密码123" [--config presets
 
 `LabGuard.SelfTest.exe` 的 `[8] 网卡判据` 会打印**这台机器实际会监控哪些网卡**，部署前先看它一眼。
 
-1. **不动 Windows Defender、不要求卸载杀毒软件**：原版要求先禁用 Defender 并卸载安全软件；本复刻只写策略键，建议改为在安全软件里给本程序加白名单。
-2. **不做主页劫持、不冒充其它浏览器**：原版用 9 个 `zy\*.exe`（元数据写着 `Google Chrome`）把学生浏览器主页改成自家导航站变现；本复刻的上网入口只做"按设置里的主页启动真浏览器"，默认不接管快捷方式。
-3. **不隐藏痕迹**：原版会改 `HideFileExt`/`NoFolderOptions`/`ShowSuperHidden` 让 hosts 改动难以发现，并把 hosts 设成隐藏；本复刻默认仍可关闭这些"隐藏"项（配置里 `Hosts.HideHostsFile`、`Shell.HideFileExtensions`）。
-4. **服务异常不重启电脑**：原版 `sc failure … actions= reboot`，本复刻默认只重启服务（可配置）。
-5. **安全模式限制可还原**：原版删除 `SafeBoot\Network` 后无法还原；本复刻删除前导出备份。
+1. **不动 Windows Defender、不要求卸载杀毒软件**：只写策略键，安装目录加入杀软白名单即可。
+2. **不劫持主页、不冒充其它软件**：上网入口只做"按设置里的主页启动真实浏览器"，默认不接管快捷方式。
+3. **不隐藏痕迹**：`Hosts.HideHostsFile` / `Shell.HideFileExtensions` / `Shell.NoFolderOptions` 都可以在设置里关掉，
+   改了什么都写在注册表与日志里，老师能审计。
+4. **服务异常不重启电脑**：默认只重启服务（`sc failure … actions= restart`）；"服务异常就重启本机"是可选项且默认关闭。
+5. **能删也能还原**：删除"带网络的安全模式"前先导出 `.reg` 备份，退出/卸载时还原。
 6. **干跑模式**：`LabGuard.Agent.exe --dry-run` 只记录日志、不修改系统，方便先在教师机上验证策略判定。
+7. **留后路**：安全模式（含无网络）不加载任何管控；`scripts/cleanup-all.ps1` 一键彻底卸载还原。
 
 ## 5. 自检
 

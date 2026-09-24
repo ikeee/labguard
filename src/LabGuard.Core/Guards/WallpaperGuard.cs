@@ -9,8 +9,8 @@ using Microsoft.Win32;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// 桌面壁纸与机器编号（原版：6 张机房规范壁纸 + 右上角显示计算机名后 6 位）。
-    /// 复刻版按素材实时合成一张带编号的壁纸，避免直接依赖原版图片。
+    /// 桌面壁纸与机器编号（6 张规范壁纸 + 右上角显示计算机名后 6 位）。
+    /// 按素材实时合成一张带编号的壁纸，避免直接依赖外部素材。
     /// </summary>
     public sealed class WallpaperGuard : GuardBase
     {

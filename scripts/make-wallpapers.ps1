@@ -1,6 +1,6 @@
 ﻿<#
   生成 6 张机房规范壁纸（1920x1080，含机房行为规范文字与"机器编号"占位）。
-  说明：不复用原版壁纸素材（那是厂商版权图片），本脚本自己画，可自由分发。
+  说明：不复用任何第三方素材（壁纸为本脚本自绘），本脚本自己画，可自由分发。
   用法：powershell -ExecutionPolicy Bypass -File make-wallpapers.ps1 -OutDir .\wallpaper
 #>
 [CmdletBinding()]

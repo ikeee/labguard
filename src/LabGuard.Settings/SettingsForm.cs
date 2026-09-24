@@ -187,7 +187,7 @@ namespace LabGuard.Settings
             var pwd2 = new TextBox { Left = 224, Top = 34, Width = 200, UseSystemPasswordChar = true };
             var hint = new Label
             {
-                Text = "（原版默认口令是 111111，复刻版用 PBKDF2-SHA256 保存；这个密码也是「暂停/退出/卸载」的密码）",
+                Text = "（口令用 PBKDF2-SHA256 保存；这个密码也是「暂停/退出/卸载」的密码）",
                 Left = 12,
                 Top = 60,
                 Width = 700,
@@ -273,20 +273,20 @@ namespace LabGuard.Settings
             {
                 if (_pwdText.Text != _pwdText2.Text)
                 {
-                    MessageBox.Show("两次输入的密码不一致，请重新输入！", "机房管理助手");
+                    MessageBox.Show("两次输入的密码不一致，请重新输入！", "LabGuard");
                     return;
                 }
                 string error = PasswordHasher.Validate(_pwdText.Text);
                 if (error != null)
                 {
-                    MessageBox.Show(error, "机房管理助手");
+                    MessageBox.Show(error, "LabGuard");
                     return;
                 }
                 _config.PasswordHash = PasswordHasher.Create(_pwdText.Text);
             }
             if (string.IsNullOrEmpty(_config.PasswordHash))
             {
-                MessageBox.Show("请设置 6 位及以上的字母或数字作为小助手密码！", "机房管理助手");
+                MessageBox.Show("请设置 6 位及以上的字母或数字作为小助手密码！", "LabGuard");
                 return;
             }
 
@@ -294,7 +294,7 @@ namespace LabGuard.Settings
             if (_config.Network.EnforceDns && _config.Network.DnsServers.Count == 0)
             {
                 MessageBox.Show("勾选了「锁定学生机 DNS」，但没有填 DNS 服务器地址。\r\n请填教师机 IP 或取消勾选。",
-                    "机房管理助手");
+                    "LabGuard");
                 return;
             }
 
@@ -306,14 +306,14 @@ namespace LabGuard.Settings
             catch (Exception ex)
             {
                 MessageBox.Show("保存失败：" + ex.Message + "\r\n请右击设置程序，选择【以管理员身份运行】后重试。",
-                    "机房管理助手", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    "LabGuard", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
             RestartEngineSide();
             MessageBox.Show("设置已保存，监控将在 10 秒内重新生效。\r\n" +
                             "（记得在硬盘保护系统中创建进度 / 保存系统）",
-                "机房管理助手", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                "LabGuard", MessageBoxButtons.OK, MessageBoxIcon.Information);
             DialogResult = DialogResult.OK;
             Close();
         }
@@ -350,12 +350,12 @@ namespace LabGuard.Settings
                     string json = ConfigStore.Serialize(_config);
                     File.WriteAllText(dlg.FileName, json, new System.Text.UTF8Encoding(false));
                     MessageBox.Show("已导出（含口令散列，可直接拷到其它学生机导入）：\r\n" + dlg.FileName,
-                        "机房管理助手");
+                        "LabGuard");
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("导出失败：" + ex.Message, "机房管理助手");
+                MessageBox.Show("导出失败：" + ex.Message, "LabGuard");
             }
         }
 
@@ -386,19 +386,19 @@ namespace LabGuard.Settings
                     _config.RegistryAcl = imported.RegistryAcl;
                     _config.Watchdog = imported.Watchdog;
                     RefreshControls();
-                    MessageBox.Show("已导入，请检查各分组后点【保存设置】。", "机房管理助手");
+                    MessageBox.Show("已导入，请检查各分组后点【保存设置】。", "LabGuard");
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("导入失败：" + ex.Message, "机房管理助手");
+                MessageBox.Show("导入失败：" + ex.Message, "LabGuard");
             }
         }
 
         private void ResetDefaults()
         {
             if (MessageBox.Show("把所有开关恢复为程序默认值？\r\n（密码不会被清除）",
-                    "机房管理助手", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+                    "LabGuard", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             string pwd = _config.PasswordHash;
             var fresh = new GuardConfig { PasswordHash = pwd };
             _config.Enabled = fresh.Enabled;

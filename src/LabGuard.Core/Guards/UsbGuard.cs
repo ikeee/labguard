@@ -6,7 +6,7 @@ using Microsoft.Win32;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// USB 存储设备控制（原版 usb_jianche）：禁用 usbstor 驱动（Start=4），
+    /// USB 存储设备控制（）：禁用 usbstor 驱动（Start=4），
     /// 保留 USB 键鼠；被改回则提示并重新禁用。
     /// </summary>
     public sealed class UsbGuard : GuardBase
@@ -42,7 +42,7 @@ namespace LabGuard.Core.Guards
                 if (!_reported)
                 {
                     _reported = true;
-                    Context.Report(Name, "你修改注册表企图使用U盘！请重新启动电脑。", ViolationAction.Notify);
+                    Context.Report(Name, "检测到 USB 存储设备策略被修改，已重新禁用。", ViolationAction.Notify);
                 }
                 Disable();
                 SetStatus("检测到 usbstor 被改回，已重新禁用");

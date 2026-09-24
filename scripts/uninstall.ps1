@@ -1,5 +1,5 @@
 ﻿<#
-  卸载【机房管理助手（复刻）】并还原系统设置。
+  卸载【LabGuard】并还原系统设置。
   必须用【管理员】PowerShell 运行：
       powershell -ExecutionPolicy Bypass -File uninstall.ps1
   带 -Force 时不弹密码（用于批量维护）。
@@ -17,7 +17,7 @@ if (-not $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw '请用【管理员】PowerShell 运行本脚本。'
 }
 
-Write-Host "=== 机房管理助手（复刻）卸载 ===" -ForegroundColor Cyan
+Write-Host "=== LabGuard卸载 ===" -ForegroundColor Cyan
 
 $svc = Get-Service -Name 'LabGuardSvc' -ErrorAction SilentlyContinue
 if ($svc) { & sc.exe stop LabGuardSvc | Out-Null; Start-Sleep -Seconds 2 }
@@ -47,11 +47,11 @@ if (Test-Path $uninstaller) {
 if (Get-Service -Name 'LabGuardSvc' -ErrorAction SilentlyContinue) { & sc.exe delete LabGuardSvc | Out-Null }
 
 Remove-Item -Path 'HKLM:\SOFTWARE\LabGuard' -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LabGuardReplica' -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LabGuard', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LabGuardReplica' -Recurse -Force -ErrorAction SilentlyContinue -ErrorAction SilentlyContinue
 
-$programs = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) '机房管理助手'
+$programs = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'LabGuard'
 if (Test-Path $programs) { [System.IO.Directory]::Delete($programs, $true) }
-$desktopLnk = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) '学生机房管理助手.lnk'
+$desktopLnk = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'LabGuard.lnk'
 if (Test-Path $desktopLnk) { Remove-Item -LiteralPath $desktopLnk -Force }
 
 if (-not $KeepFiles) {

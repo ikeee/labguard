@@ -12,7 +12,7 @@ using LabGuard.Core.UI;
 namespace LabGuard.Uninstall
 {
     /// <summary>
-    /// 卸载程序（对应原版 uninstall.exe）：
+    /// 卸载程序（uninstall.exe）：
     /// 密码 → 停止服务与代理 → 逐项还原系统（hosts/USB/注册表策略/浏览器策略/IFEO/安全模式/壁纸）
     /// → 删除服务、计划任务、快捷方式、控制面板卸载项、配置 → 删程序目录 → 询问重启。
     ///
@@ -104,25 +104,25 @@ namespace LabGuard.Uninstall
                 }
                 else
                 {
-                    using (var dlg = new PasswordDialog("机房管理助手 - 卸载", "卸载小助手密码：", config.PasswordHash))
+                    using (var dlg = new PasswordDialog("LabGuard - 卸载", "卸载小助手密码：", config.PasswordHash))
                     {
                         ok = dlg.ShowDialog() == DialogResult.OK;
                     }
                 }
                 if (!ok)
                 {
-                    if (!quiet) MessageBox.Show("密码不正确，不能卸载。", "机房管理助手");
+                    if (!quiet) MessageBox.Show("密码不正确，不能卸载。", "LabGuard");
                     Environment.ExitCode = 3;
                     return;
                 }
             }
 
             if (!quiet && MessageBox.Show(
-                    "将卸载【机房管理助手（复刻）】并还原所有被改动的设置：\r\n\r\n" +
+                    "将卸载【LabGuard】并还原所有被改动的设置：\r\n\r\n" +
                     "· 恢复 USB 存储设备、hosts、浏览器策略、注册表策略、壁纸、IFEO、安全模式限制\r\n" +
                     "· 删除开机启动项、守护服务、快捷方式、控制面板卸载项\r\n\r\n" +
                     "卸载后建议重启电脑。确定继续吗？",
-                    "卸载机房管理助手", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK)
+                    "卸载LabGuard", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK)
             {
                 return;
             }
@@ -167,15 +167,15 @@ namespace LabGuard.Uninstall
             // 3) 清掉快捷方式
             foreach (string lnk in new[]
             {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "学生机房管理助手.lnk"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "机房管理助手", "设置.lnk"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "机房管理助手", "卸载.lnk"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "机房管理助手", "解除锁定（输入密码）.lnk")
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "LabGuard.lnk"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "LabGuard", "设置.lnk"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "LabGuard", "卸载.lnk"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "LabGuard", "解除锁定（输入密码）.lnk")
             })
             {
                 try { if (File.Exists(lnk)) File.Delete(lnk); } catch { }
             }
-            string programsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "机房管理助手");
+            string programsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "LabGuard");
             try
             {
                 if (Directory.Exists(programsDir) && Directory.GetFileSystemEntries(programsDir).Length == 0)
@@ -209,7 +209,7 @@ namespace LabGuard.Uninstall
             if (!quiet && MessageBox.Show(
                     "卸载完成。\r\n\r\n还原后需要重启电脑才能完全生效（USB、任务栏、安全模式等）。\r\n" +
                     "（日志保留在 " + Log.Directory + "）\r\n\r\n现在重启吗？",
-                    "机房管理助手", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                    "LabGuard", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
             {
                 SystemActions.Shutdown("/r");
             }

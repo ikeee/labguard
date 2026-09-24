@@ -147,11 +147,11 @@ namespace LabGuard.Settings
             // 已设置密码则必须先通过密码才能改设置
             if (!string.IsNullOrEmpty(config.PasswordHash))
             {
-                using (var dlg = new PasswordDialog("机房管理助手 - 设置", "输入小助手密码：", config.PasswordHash))
+                using (var dlg = new PasswordDialog("LabGuard - 设置", "输入小助手密码：", config.PasswordHash))
                 {
                     if (dlg.ShowDialog() != DialogResult.OK)
                     {
-                        MessageBox.Show("密码不正确，不能修改设置。", "机房管理助手",
+                        MessageBox.Show("密码不正确，不能修改设置。", "LabGuard",
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         return;
                     }
@@ -229,7 +229,7 @@ namespace LabGuard.Settings
             c.Shell.DisableRegistryTools = true;
             c.Wallpaper.ShowMachineNumber = true;
             c.Watchdog.Enabled = true;
-            c.Watchdog.RebootOnServiceFailure = false;   // 不学原版"服务异常就重启电脑"
+            c.Watchdog.RebootOnServiceFailure = false;   // 默认不重启电脑（只重启服务）
 
             if (name.Contains("一体机"))
             {

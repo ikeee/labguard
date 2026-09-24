@@ -8,7 +8,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <NoWarn>CS0618;CS1591</NoWarn>
-    <Product>机房管理助手（复刻）卸载</Product>
+    <Product>LabGuard卸载</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>

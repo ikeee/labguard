@@ -9,7 +9,7 @@ using LabGuard.Core.Interop;
 namespace LabGuard.Core.UI
 {
     /// <summary>
-    /// 全屏锁定屏（对应原版的"全屏锁定 / 蓝屏锁定"）：
+    /// 全屏锁定屏（的"全屏锁定 / 蓝屏锁定"）：
     /// 置顶无边框、吞掉 Win/Alt+Tab/Ctrl+Esc 等键，只能输入密码或等违规条件自行解除。
     /// </summary>
     public class LockScreenForm : Form, ILockScreen

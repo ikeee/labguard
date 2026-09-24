@@ -1,11 +1,11 @@
 ﻿<#
-  安装【机房管理助手（复刻）】学生端。
+  安装【LabGuard】学生端。
 
   必须用【管理员】PowerShell 运行：
       powershell -ExecutionPolicy Bypass -File install.ps1
 
   与原始软件一致的地方：
-    · 安装目录默认取"内存指纹"随机化路径：C:\f<物理内存MB><虚拟内存MB>（可显式指定 -InstallDir）
+    · 安装目录默认 C:\Program Files\LabGuard（普通用户不可写；可用 -InstallDir 指定别的目录）
     · 装 Windows 服务 LabGuardSvc（SYSTEM 权限）+ 登录计划任务（最高权限）
     · 桌面/开始菜单快捷方式、卸载登记项
   与原始软件不同的地方（刻意改进）：
@@ -16,7 +16,6 @@
 [CmdletBinding()]
 param(
     [string]$InstallDir,
-    [switch]$SimplePath,          # 用 C:\LabGuard（便于维护）
     [switch]$NoFirewallRule,
     [switch]$SkipShortcuts,
     [string]$Password,            # 无人值守：直接设好小助手密码
@@ -38,17 +37,8 @@ function Assert-Admin {
     }
 }
 
-function Get-MemoryFingerprintPath {
-    # 复刻原版做法：用物理内存/虚拟内存 MB 数拼目录名，学生不容易猜到
-    $cs = Get-CimInstance Win32_ComputerSystem
-    $os = Get-CimInstance Win32_OperatingSystem
-    $phys = [int]($cs.TotalPhysicalMemory / 1MB)
-    $virt = [int]($os.TotalVirtualMemorySize / 1KB)
-    return "C:\f$phys$virt"
-}
-
 Assert-Admin
-Write-Host "=== 机房管理助手（复刻）安装 ===" -ForegroundColor Cyan
+Write-Host "=== LabGuard安装 ===" -ForegroundColor Cyan
 if ($DryRun) { Write-Host '【预演模式】只打印步骤，不实际改动系统。' -ForegroundColor Yellow }
 
 function Invoke-Step([string]$desc, [scriptblock]$action) {
@@ -58,7 +48,8 @@ function Invoke-Step([string]$desc, [scriptblock]$action) {
 }
 
 if (-not $InstallDir) {
-    $InstallDir = if ($SimplePath) { 'C:\LabGuard' } else { Get-MemoryFingerprintPath }
+    # 默认装到系统程序目录（普通用户不可写、便于统一维护）
+    $InstallDir = Join-Path $env:ProgramFiles 'LabGuard'
 }
 $InstallDir = $InstallDir.TrimEnd('\')
 Write-Host "安装目录：$InstallDir"
@@ -80,7 +71,7 @@ if ($DryRun) {
     }
 }
 
-# 安装目录权限：管理员/SYSTEM 完全控制，普通用户只读+执行（对应原版 regini 加固思路）
+# 安装目录权限：管理员/SYSTEM 完全控制，普通用户只读+执行
 if ($DryRun) {
     Write-Host '  · 将把安装目录权限收紧为「管理员/SYSTEM 完全控制，普通用户只读」'
 } else {
@@ -128,9 +119,9 @@ if (Get-Service -Name 'LabGuardSvc' -ErrorAction SilentlyContinue) {
     }
 }
 if (-not $DryRun) {
-    & sc.exe create LabGuardSvc binPath= "`"$svcExe`"" start= auto obj= LocalSystem DisplayName= "机房管理助手守护服务（复刻）" | Out-Null
-    & sc.exe description LabGuardSvc "机房管理助手（复刻）：系统级策略守护，保证小助手与电子教室保护持续生效。" | Out-Null
-# 原版用 sc failure actions=reboot（服务异常就重启电脑），这里默认保守处理：只自动重启服务
+    & sc.exe create LabGuardSvc binPath= "`"$svcExe`"" start= auto obj= LocalSystem DisplayName= "LabGuard守护服务（独立实现）" | Out-Null
+    & sc.exe description LabGuardSvc "LabGuard：系统级策略守护，保证小助手与电子教室保护持续生效。" | Out-Null
+# 服务异常时默认只自动重启服务（不重启电脑）
     & sc.exe failure LabGuardSvc actions= restart/60000/restart/60000/restart/60000 reset= 900 | Out-Null
 }
 if (-not $DryRun) { Write-Host "已创建服务 LabGuardSvc。" -ForegroundColor Green }
@@ -166,13 +157,13 @@ if (-not $SkipShortcuts) {
     else {
     $shell = New-Object -ComObject WScript.Shell
     $desktop = [Environment]::GetFolderPath('CommonDesktopDirectory')
-    $programs = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) '机房管理助手'
+    $programs = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'LabGuard'
     New-Item -ItemType Directory -Force -Path $programs | Out-Null
 
-    $lnk = $shell.CreateShortcut((Join-Path $desktop '学生机房管理助手.lnk'))
+    $lnk = $shell.CreateShortcut((Join-Path $desktop 'LabGuard.lnk'))
     $lnk.TargetPath = $agentExe
     $lnk.WorkingDirectory = $InstallDir
-    $lnk.Description = '机房管理助手（复刻）小助手'
+    $lnk.Description = 'LabGuard小助手'
     $lnk.Save()
 
     $lnk2 = $shell.CreateShortcut((Join-Path $programs '设置.lnk'))
@@ -195,10 +186,10 @@ if (-not $SkipShortcuts) {
 }
 
 # ---------------------------------------------------------------- 7. 卸载登记项
-$uninstKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LabGuardReplica'
+$uninstKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LabGuard'
 if (-not $DryRun) {
     New-Item -Path $uninstKey -Force | Out-Null
-    Set-ItemProperty -Path $uninstKey -Name 'DisplayName'    -Value '机房管理助手（复刻）'
+    Set-ItemProperty -Path $uninstKey -Name 'DisplayName'    -Value 'LabGuard'
     Set-ItemProperty -Path $uninstKey -Name 'UninstallString' -Value "`"$InstallDir\LabGuard.Uninstall.exe`""
     Set-ItemProperty -Path $uninstKey -Name 'InstallLocation' -Value $InstallDir
     Set-ItemProperty -Path $uninstKey -Name 'Publisher'       -Value 'LabGuard Replica'

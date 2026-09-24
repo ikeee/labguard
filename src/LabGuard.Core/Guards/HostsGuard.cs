@@ -8,7 +8,7 @@ using LabGuard.Core.Logging;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// hosts 黑名单守护（原版 przs + hmd_local.txt）：写入受管区块、隐藏文件、被删/被改即恢复。
+    /// hosts 黑名单守护（本地域名清单）：写入受管区块、隐藏文件、被删/被改即恢复。
     /// </summary>
     public sealed class HostsGuard : GuardBase
     {
@@ -92,8 +92,8 @@ namespace LabGuard.Core.Guards
             {
                 _deletedReports++;
                 Context.Report(Name, _deletedReports > 1
-                    ? "hosts文件多次被删除或备份文件不存在！"
-                    : "hosts文件被删除！现在恢复。", ViolationAction.Notify);
+                    ? "hosts 文件被反复删除，且没有可用备份。"
+                    : "hosts 文件被删除，已自动恢复。", ViolationAction.Notify);
                 HostsFile.Apply(BuildContextDomains(), Context.Config.Hosts.SinkAddress);
                 SetStatus("hosts 被删除，已恢复");
                 return;

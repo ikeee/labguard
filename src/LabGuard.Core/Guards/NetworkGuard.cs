@@ -9,7 +9,7 @@ using Microsoft.Win32;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// 网络与防火墙守护（原版 jfglzsn 的对应模块）：
+    /// 网络与防火墙守护（核心模块）：
     /// · 断网：网卡变 Down / IP 清空 / 0.0.0.0 / APIPA(169.254.*)，持续 N 秒确认 →
     ///   提示 + 可选全屏遮罩（插回网线自动消失）+ 可选限次响鸣；
     /// · 改 IP：与启动基线比对后强制还原（DHCP 的机器改回 source=dhcp）；
@@ -70,7 +70,7 @@ namespace LabGuard.Core.Guards
 
         protected override void OnTick()
         {
-            // 原版经验：开机后要给电子教室/网络足够时间，默认 120 秒内不判违规
+            // 经验值：开机后要给电子教室/网络足够时间，默认 120 秒内不判违规
             if ((DateTime.Now - _startedAt).TotalSeconds < Context.Config.StartDelaySeconds)
             {
                 SetStatus("预热中（" + Context.Config.StartDelaySeconds + "秒后开始检测）");
@@ -105,7 +105,7 @@ namespace LabGuard.Core.Guards
 
                 if (elapsed >= DisconnectConfirmSeconds)
                 {
-                    Context.Report(Name, "你拔了网线或禁用了网络连接！请马上恢复网络，否则会全屏锁定！",
+                    Context.Report(Name, "检测到本机网络已断开：请插回网线或启用网络连接。",
                         HostAction(), string.Join("/", _watchedNames) + " 已断开 " + (int)elapsed + " 秒");
                     ShowMaskIfNeeded(_unpluggedSince);
                     MaybeSound(_unpluggedSince);
@@ -140,7 +140,7 @@ namespace LabGuard.Core.Guards
                 if (now.Ip != null && baseLine.Ip != null && now.Ip != baseLine.Ip)
                 {
                     violation = true;
-                    Context.Report(Name, "你修改了IP地址！原地址为：" + baseLine.Ip + "，现已强制恢复。",
+                    Context.Report(Name, "本机 IP 被修改，原地址为：" + baseLine.Ip + "，现已强制恢复。",
                         HostAction(), baseLine.Name);
                     if (Context.Config.Network.RestoreOriginalIp) Restore(baseLine);
                 }
@@ -150,7 +150,7 @@ namespace LabGuard.Core.Guards
             if (Context.Config.Network.ForceFirewallOff && FirewallEnabled())
             {
                 violation = true;
-                Context.Report(Name, "你启用了防火墙，危害电子教室的运行！现在助手强制关闭防火墙！",
+                Context.Report(Name, "检测到防火墙被开启，可能影响课堂广播；已自动关闭。",
                     ViolationAction.Notify);
                 SystemActions.Run("netsh.exe", "advfirewall set allprofiles state off");
             }
@@ -177,7 +177,7 @@ namespace LabGuard.Core.Guards
             Context.Alert.ShowDisconnectMask(
                 "机位 " + number,
                 "网络已断开",
-                "请把网线插回 / 或启用网络连接",
+                "请插回网线或启用网络连接",
                 Context.Config.PasswordHash,
                 randomWallpaper,
                 Context.Config.Network.DisconnectMaskShowElapsed,

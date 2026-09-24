@@ -9,7 +9,7 @@ using Microsoft.Win32;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// 浏览器管控（原版做法：只写组策略注册表，不动浏览器本体）：
+    /// 浏览器管控（：只写组策略注册表，不动浏览器本体）：
     /// Chrome 小恐龙/下载、Edge 冲浪游戏/下载/开发者工具、Firefox 下载、IE 下载与另存为。
     /// 另可选"快捷方式接管"：把桌面/开始菜单里的浏览器快捷方式改指向本程序的 Launcher。
     /// </summary>

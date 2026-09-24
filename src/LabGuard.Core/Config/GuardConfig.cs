@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace LabGuard.Core.Config
 {
-    /// <summary>总体配置。字段命名与"功能对照表"一一对应，便于和原版逐项对照。</summary>
+    /// <summary>总体配置。字段命名与"功能对照表"一一对应，便于和逐项对照。</summary>
     public class GuardConfig
     {
         public int Version { get; set; } = 1;
@@ -12,7 +12,7 @@ namespace LabGuard.Core.Config
         public bool Enabled { get; set; } = true;
         /// <summary>退出/暂停后自动恢复管控的时间（分钟），0 = 不自动恢复。</summary>
         public int ResumeAfterMinutes { get; set; } = 0;
-        /// <summary>程序启动后多少秒才开始检测（避免开机误判，原版为 120 秒）。</summary>
+        /// <summary>程序启动后多少秒才开始检测（避免开机误判，为 120 秒）。</summary>
         public int StartDelaySeconds { get; set; } = 120;
 
         public ClassroomSettings Classroom { get; set; } = new ClassroomSettings();
@@ -49,7 +49,7 @@ namespace LabGuard.Core.Config
     public class ClassroomSettings
     {
         public bool Enabled { get; set; } = true;
-        /// <summary>电子教室客户端进程名（原版：极域 StudentMain.exe / 红蜘蛛 REDAgent.exe / 锐捷 ClassMangerApp.exe）。</summary>
+        /// <summary>电子教室客户端进程名（极域 StudentMain.exe / 红蜘蛛 REDAgent.exe / 锐捷 ClassMangerApp.exe）。</summary>
         public List<string> ProcessNames { get; set; } = new List<string> { "StudentMain.exe", "REDAgent.exe", "ClassMangerApp.exe" };
         /// <summary>电子教室客户端完整路径（设置程序里可手动选择；留空则自动探测）。</summary>
         public string MainExecutable { get; set; } = "";
@@ -82,9 +82,9 @@ namespace LabGuard.Core.Config
         public bool DetectDisconnected { get; set; } = true;
         /// <summary>发现防火墙开启（阻止所有传入连接）时强制关闭。</summary>
         public bool ForceFirewallOff { get; set; } = true;
-        /// <summary>违规时是否全屏锁定（原版为提示 + 可选锁屏）。</summary>
+        /// <summary>违规时是否全屏锁定（）。</summary>
         public bool LockOnViolation { get; set; } = false;
-        /// <summary>违规时是否强制重启（原版 shutdown /s /f /t 0）。</summary>
+        /// <summary>违规时是否强制重启（）。</summary>
         public bool ShutdownOnViolation { get; set; } = false;
 
         // ---------------- 断网遮罩（"屏保式"提示，插回网线自动消失） ----------------
@@ -136,15 +136,15 @@ namespace LabGuard.Core.Config
         public bool BlockProcessTools { get; set; } = true;
         /// <summary>虚拟桌面类。</summary>
         public bool BlockVirtualDesktop { get; set; } = true;
-        /// <summary>杀毒/管家软件（对应原版 shadu_jianche）。</summary>
+        /// <summary>杀毒/管家软件（shadu_jianche）。</summary>
         public bool BlockAntiVirus { get; set; } = true;
-        /// <summary>解压软件（对应原版禁止解压工具）。</summary>
+        /// <summary>解压软件（禁止解压工具）。</summary>
         public bool BlockArchivers { get; set; } = true;
-        /// <summary>任务管理器（对应原版 gaowei / 窗口标题）。</summary>
+        /// <summary>任务管理器（gaowei / 窗口标题）。</summary>
         public bool BlockTaskManager { get; set; } = true;
-        /// <summary>注册表编辑器（对应原版 zcb）。</summary>
+        /// <summary>注册表编辑器（zcb）。</summary>
         public bool BlockRegedit { get; set; } = true;
-        /// <summary>命令提示符 / PowerShell（对应原版 cmd_jianche）。</summary>
+        /// <summary>命令提示符 / PowerShell（cmd_jianche）。</summary>
         public bool BlockCommandPrompt { get; set; } = false;
         /// <summary>小游戏（扫雷/纸牌等 + Image File Execution Options 禁用）。</summary>
         public bool BlockGames { get; set; } = true;
@@ -156,7 +156,7 @@ namespace LabGuard.Core.Config
     public class FileCreationSettings
     {
         public bool Enabled { get; set; } = true;
-        /// <summary>AllowAll / CppOnly / DenyAll（对应原版 12 组开关里的三档）。</summary>
+        /// <summary>AllowAll / CppOnly / DenyAll（12 组开关里的三档）。</summary>
         public string Mode { get; set; } = "CppOnly";
         public List<string> WatchPaths { get; set; } = new List<string>
         {
@@ -275,7 +275,7 @@ namespace LabGuard.Core.Config
         public bool RestoreMissingFiles { get; set; } = true;
         /// <summary>心跳上报地址（可选）：填了之后每 60 秒把本机状态 POST 给教师机上的监视器。</summary>
         public string ReportUrl { get; set; } = "";
-        /// <summary>服务异常退出后自动重启电脑（对应原版 sc failure … actions=reboot）。</summary>
+        /// <summary>服务异常退出后自动重启电脑（sc failure … actions=reboot）。</summary>
         public bool RebootOnServiceFailure { get; set; } = false;
         /// <summary>代理进程被结束后自动重新拉起的间隔（秒）。</summary>
         public int AgentRestartSeconds { get; set; } = 10;

@@ -6,7 +6,7 @@ using LabGuard.Core.Logging;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// Win 键拦截（原版对付"虚拟桌面脱离控制"的最后一环）。
+    /// Win 键拦截（防止用虚拟桌面脱离管控）。
     /// 用低级键盘钩子吞掉 Win 键及其组合（Win+Tab / Win+D 等），只影响本用户会话。
     /// 需要宿主线程有消息循环（Agent 是 WinForms，天然满足）。
     /// </summary>

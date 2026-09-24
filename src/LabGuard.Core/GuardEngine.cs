@@ -109,17 +109,17 @@ namespace LabGuard.Core
             switch (e.Action)
             {
                 case ViolationAction.Notify:
-                    try { _context.Screen?.Notify("机房管理助手", e.Message); } catch { }
+                    try { _context.Screen?.Notify("LabGuard", e.Message); } catch { }
                     break;
                 case ViolationAction.Lock:
-                    try { _context.Screen?.Show("机房管理助手 · 已锁定", e.Message, false); } catch { }
+                    try { _context.Screen?.Show("LabGuard · 已锁定", e.Message, false); } catch { }
                     break;
                 case ViolationAction.Shutdown:
-                    try { _context.Screen?.Show("机房管理助手", e.Message + "\r\n\r\n电脑将在 10 秒后关机。", false); } catch { }
+                    try { _context.Screen?.Show("LabGuard", e.Message + "\r\n\r\n电脑将在 10 秒后关机。", false); } catch { }
                     SystemActions.Shutdown("/s");
                     break;
                 case ViolationAction.Reboot:
-                    try { _context.Screen?.Show("机房管理助手", e.Message + "\r\n\r\n电脑将在 10 秒后重启。", false); } catch { }
+                    try { _context.Screen?.Show("LabGuard", e.Message + "\r\n\r\n电脑将在 10 秒后重启。", false); } catch { }
                     SystemActions.Shutdown("/r");
                     break;
             }

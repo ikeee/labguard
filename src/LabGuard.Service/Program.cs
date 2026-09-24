@@ -10,7 +10,7 @@ namespace LabGuard.Service
     internal static class Program
     {
         /// <summary>
-        /// 守护服务（对应原版 zmserv.exe）。以 SYSTEM 运行，负责系统级策略，
+        /// 守护服务（zmserv.exe）。以 SYSTEM 运行，负责系统级策略，
         /// 并保证用户会话里的 LabGuard.Agent.exe 一直活着。
         /// 用法：直接运行 = 控制台调试模式；由 SCM 启动 = 服务模式。
         /// </summary>

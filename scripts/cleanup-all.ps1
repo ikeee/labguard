@@ -31,7 +31,8 @@ $ErrorActionPreference = 'Continue'
 $svc = 'LabGuardSvc'
 $taskName = 'LabGuard\Agent'
 $regRoot = 'HKLM:\SOFTWARE\LabGuard'
-$uninstKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LabGuardReplica'
+$uninstKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LabGuard'
+$uninstKeyLegacy = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LabGuardReplica'
 $hosts = "$env:SystemRoot\System32\drivers\etc\hosts"
 $hostsBak = "$hosts.labguard-bak"
 $dataDir = Join-Path $env:ProgramData 'LabGuard'
@@ -62,7 +63,7 @@ function RegDelVal([string]$path, [string]$name) {
 
 $id = [Security.Principal.WindowsIdentity]::GetCurrent()
 $isAdmin = (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-Write-Host '=== 机房管理助手（复刻）· 彻底卸载与还原 ===' -ForegroundColor Cyan
+Write-Host '=== LabGuard· 彻底卸载与还原 ===' -ForegroundColor Cyan
 if (-not $isAdmin) { Write-Host '⚠ 当前不是管理员：服务/注册表/HKLM 部分会失败，请用【管理员】PowerShell 重跑。' -ForegroundColor Yellow }
 $bootMode = (Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);' -Name SM -Namespace WG -PassThru)::GetSystemMetrics(67)
 Write-Host ('当前启动模式：' + $(if ($bootMode -eq 0) { '正常' } elseif ($bootMode -eq 1) { '安全模式' } else { '带网络的安全模式' }))
@@ -82,13 +83,13 @@ Write-Host '2) 删除自启动计划任务与快捷方式' -ForegroundColor Cyan
 Run-Step ('删除计划任务 ' + $taskName) { & schtasks.exe /delete /tn $taskName /f 2>$null | Out-Null }
 Run-Step '删除桌面/开始菜单快捷方式' {
     foreach ($lnk in @(
-        (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) '学生机房管理助手.lnk'),
-        (Join-Path ([Environment]::GetFolderPath('CommonPrograms')) '机房管理助手\设置.lnk'),
-        (Join-Path ([Environment]::GetFolderPath('CommonPrograms')) '机房管理助手\卸载.lnk'),
-        (Join-Path ([Environment]::GetFolderPath('CommonPrograms')) '机房管理助手\解除锁定（输入密码）.lnk'))) {
+        (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'LabGuard.lnk'),
+        (Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'LabGuard\设置.lnk'),
+        (Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'LabGuard\卸载.lnk'),
+        (Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'LabGuard\解除锁定（输入密码）.lnk'))) {
         if (Test-Path $lnk) { Remove-Item -LiteralPath $lnk -Force }
     }
-    $pdir = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) '机房管理助手'
+    $pdir = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'LabGuard'
     if ((Test-Path $pdir) -and (Get-ChildItem $pdir -Recurse -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0) {
         [System.IO.Directory]::Delete($pdir, $true)
     }

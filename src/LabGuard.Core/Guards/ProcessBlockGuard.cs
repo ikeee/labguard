@@ -10,7 +10,7 @@ using Microsoft.Win32;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// 违规软件拦截（原版 przs/jfglzsn 的进程名 + 窗口标题双表）：
+    /// 违规软件拦截（进程名 + 窗口标题双表匹配）：
     /// 破解/脱控工具、进程工具、虚拟桌面、杀软管家、解压软件、小游戏、系统工具。
     /// 同时对小游戏与几条高危命令写 IFEO 的 Debugger=null（映像劫持），退出时清掉。
     /// </summary>
@@ -122,14 +122,14 @@ namespace LabGuard.Core.Guards
             foreach (string s in DefaultBlocklists.Archivers)
             {
                 if (keyword.IndexOf(s, StringComparison.OrdinalIgnoreCase) >= 0)
-                    return "本电脑禁止使用解压软件，如果确有需要，请老师来退出小助手。";
+                    return "本机禁止使用解压缩软件；如确有需要，请老师用密码暂停管控。";
             }
             foreach (string s in DefaultBlocklists.AntiVirus)
             {
                 if (keyword.IndexOf(s, StringComparison.OrdinalIgnoreCase) >= 0)
-                    return "你运行了杀毒类、虚拟机类的软件！危害电子教室运行，如有误判，请老师拍照与作者联系。";
+                    return "检测到杀毒/虚拟机类软件在运行，可能影响课堂广播；如为误判请老师调整策略。";
             }
-            return "你运行的软件违规！如有误判，请老师拍照并反馈。" +
+            return "检测到当前运行的软件不符合机房策略；如为误判请老师调整拦截清单。" +
                    "注：电脑死机时不能用任务管理器，可同时按 ctrl+alt+del，点【注销】，电脑不会自动还原。";
         }
 

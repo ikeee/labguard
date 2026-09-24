@@ -68,29 +68,13 @@ namespace LabGuard.Installer
             }
         }
 
-        /// <summary>默认安装目录：与原版同款的"内存指纹"路径（学生不容易猜到）。</summary>
+        /// <summary>默认安装目录：系统程序目录（普通用户不可写，且便于统一维护）。</summary>
         public static string DefaultInstallDir()
         {
             try
             {
-                long physMb = 0, virtMb = 0;
-                using (var searcher = new ManagementObjectSearcher("SELECT TotalPhysicalMemory FROM Win32_ComputerSystem"))
-                {
-                    foreach (ManagementObject mo in searcher.Get())
-                    {
-                        object v = mo["TotalPhysicalMemory"];
-                        if (v != null) physMb = Convert.ToInt64(v) / 1024 / 1024;
-                    }
-                }
-                using (var searcher = new ManagementObjectSearcher("SELECT TotalVirtualMemorySize FROM Win32_OperatingSystem"))
-                {
-                    foreach (ManagementObject mo in searcher.Get())
-                    {
-                        object v = mo["TotalVirtualMemorySize"];
-                        if (v != null) virtMb = Convert.ToInt64(v) / 1024;
-                    }
-                }
-                if (physMb > 0 && virtMb > 0) return @"C:\f" + physMb + virtMb;
+                string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                if (!string.IsNullOrEmpty(programFiles)) return Path.Combine(programFiles, "LabGuard");
             }
             catch { }
             return @"C:\LabGuard";
@@ -141,8 +125,8 @@ namespace LabGuard.Installer
 
             Say("4) 安装守护服务 " + ServiceName);
             StopAndDeleteService();
-            Run("sc.exe", "create " + ServiceName + " binPath= \"" + svcExe + "\" start= auto obj= LocalSystem DisplayName= \"机房管理助手守护服务（复刻）\"");
-            Run("sc.exe", "description " + ServiceName + " \"机房管理助手（复刻）：系统级策略守护，保证小助手与电子教室保护持续生效。\"");
+            Run("sc.exe", "create " + ServiceName + " binPath= \"" + svcExe + "\" start= auto obj= LocalSystem DisplayName= \"LabGuard守护服务（独立实现）\"");
+            Run("sc.exe", "description " + ServiceName + " \"LabGuard：系统级策略守护，保证小助手与电子教室保护持续生效。\"");
             Run("sc.exe", "failure " + ServiceName + " actions= restart/60000/restart/60000/restart/60000 reset= 900");
             Say("4.5) 加固服务：普通用户不能停止，只能查询/启动；安全模式不加载（留给老师处理）");
             Run("sc.exe", "sdset " + ServiceName + " \"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;CCLCSWRPRC;;;BU)\"");
@@ -171,11 +155,11 @@ namespace LabGuard.Installer
             if (!DryRun)
             {
                 using (var k = Microsoft.Win32.Registry.LocalMachine.CreateSubKey(
-                    @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LabGuardReplica"))
+                    @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LabGuard"))
                 {
                     if (k != null)
                     {
-                        k.SetValue("DisplayName", "机房管理助手（复刻）");
+                        k.SetValue("DisplayName", "LabGuard");
                         k.SetValue("UninstallString", "\"" + Path.Combine(InstallDir, "LabGuard.Uninstall.exe") + "\"");
                         k.SetValue("InstallLocation", InstallDir);
                         k.SetValue("Publisher", "LabGuard Replica");
@@ -341,13 +325,13 @@ namespace LabGuard.Installer
 
         private void CreateShortcuts(string agentExe)
         {
-            if (DryRun) { Say("        [预演] 桌面：学生机房管理助手 / 开始菜单：设置、卸载、解除锁定"); return; }
+            if (DryRun) { Say("        [预演] 桌面：LabGuard / 开始菜单：设置、卸载、解除锁定"); return; }
             try
             {
                 Type t = Type.GetTypeFromProgID("WScript.Shell");
                 object shell = Activator.CreateInstance(t);
                 string desktop = Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory);
-                string programs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "机房管理助手");
+                string programs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "LabGuard");
                 Directory.CreateDirectory(programs);
 
                 Action<string, string, string> make = (path, target, args) =>
@@ -360,7 +344,7 @@ namespace LabGuard.Installer
                     lt.InvokeMember("Save", BindingFlags.InvokeMethod, null, lnk, null);
                 };
 
-                make(Path.Combine(desktop, "学生机房管理助手.lnk"), agentExe, null);
+                make(Path.Combine(desktop, "LabGuard.lnk"), agentExe, null);
                 make(Path.Combine(programs, "设置.lnk"), Path.Combine(InstallDir, "LabGuard.Settings.exe"), null);
                 make(Path.Combine(programs, "卸载.lnk"), Path.Combine(InstallDir, "LabGuard.Uninstall.exe"), null);
                 make(Path.Combine(programs, "解除锁定（输入密码）.lnk"), agentExe, "--unlock");

@@ -8,7 +8,7 @@ using LabGuard.Core.Logging;
 namespace LabGuard.Launcher
 {
     /// <summary>
-    /// "上网入口"（对应原版 zy 目录里的假浏览器，但用途说明写清楚、不冒充其它软件）：
+    /// "上网入口"：按配置的主页启动学生机上的真实浏览器（用途写清楚，不冒充其它软件）：
     /// 找真实浏览器启动，并把设置里填写的导航页/主页作为参数带上；未配置主页时等价于直接开浏览器。
     /// </summary>
     internal static class Program

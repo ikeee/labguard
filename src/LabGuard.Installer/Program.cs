@@ -44,7 +44,7 @@ namespace LabGuard.Installer
         }
 
         /// <summary>
-        /// 机房管理助手（复刻）· 一键安装程序
+        /// LabGuard· 一键安装程序
         /// 双击 = 图形向导（欢迎 → 安装位置 → 密码 → 80 项开关 → 安装）
         /// 无人值守 = LabGuard.Installer.exe --silent --password xxx [--install-dir 路径] [--config 预设.json] [--dns IP] [--no-start]
         /// 预演     = 追加 --dry-run（只打印步骤，不改系统）
@@ -121,7 +121,7 @@ namespace LabGuard.Installer
 
         private static string Usage()
         {
-            return @"机房管理助手（复刻）安装程序
+            return @"LabGuard安装程序
 
   双击运行            = 图形向导：欢迎 → 安装位置 → 密码 → 功能开关(90+项) → 安装
 
@@ -132,7 +132,7 @@ namespace LabGuard.Installer
   参数：
     --silent            静默安装（不开向导；需要 --password）
     --dry-run           预演：只打印将执行的步骤，不改系统
-    --install-dir <路径>  安装目录（默认与原版同款：C:\f<物理内存MB><虚拟内存MB>）
+            --install-dir <路径>  安装目录（默认 C:\Program Files\LabGuard）
     --password <密码>     小助手密码（6 位及以上字母数字）
     --config <json>     套用预设配置（presets\ 目录下自带两份）
     --dns <IP>          集中 DNS（教师机 AdGuard 的 IP，可逗号分隔多个）

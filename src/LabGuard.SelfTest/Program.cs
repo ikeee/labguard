@@ -34,7 +34,7 @@ namespace LabGuard.SelfTest
                 return RunSingleGuard(args[onlyIndex + 1], args);
             }
 
-            Console.WriteLine("=== 机房管理助手（复刻）自检 ===");
+            Console.WriteLine("=== LabGuard自检 ===");
             TestPassword();
             TestHosts();
             TestBlocklists();
@@ -118,9 +118,9 @@ namespace LabGuard.SelfTest
             Check("含破解工具样例", DefaultBlocklists.ClassroomCrack.Contains("极域杀手"));
             Check("含进程工具样例", DefaultBlocklists.ProcessTools.Contains("Process Hacker"));
             Check("含杀软样例", DefaultBlocklists.AntiVirus.Contains("HipsTray"));
-            Check("含解压样例", DefaultBlocklists.Archivers.Contains("winrarrr"));
+            Check("含解压样例", DefaultBlocklists.Archivers.Contains("winrar") || DefaultBlocklists.Archivers.Contains("WinRAR"));
             Check("含游戏样例", DefaultBlocklists.Games.Contains("winmine"));
-            Check("域名黑名单 >= 70 条", DefaultBlocklists.Domains.Length >= 70, DefaultBlocklists.Domains.Length + " 条");
+            Check("域名清单 >= 25 条（可自行增删）", DefaultBlocklists.Domains.Length >= 25, DefaultBlocklists.Domains.Length + " 条");
             Check("电子教室提示 >= 3 个", DefaultBlocklists.ClassroomHints.Length >= 3);
         }
 

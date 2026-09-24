@@ -48,7 +48,7 @@ namespace LabGuard.Core.Settings
             list.Add(Bool("0、总体", "Enabled", "启用监控（总开关）",
                 "关掉后所有模块停止，系统设置会被还原（等于「老师暂停」状态）", c => c.Enabled, (c, v) => c.Enabled = (bool)v));
             list.Add(Number("0、总体", "StartDelaySeconds", "开机后延迟开始检测（秒）",
-                "原版经验值 120 秒：等电子教室/网络稳定后再判定，避免开机误报", 0, 3600,
+                "经验值 120 秒：等电子教室/网络稳定后再判定，避免开机误报", 0, 3600,
                 c => c.StartDelaySeconds, (c, v) => c.StartDelaySeconds = (int)v));
             list.Add(Number("0、总体", "ResumeAfterMinutes", "暂停后自动恢复监控（分钟）",
                 "0 = 不自动恢复；例如填 45 = 老师暂停后 45 分钟自动重新开启", 0, 1440,
@@ -66,7 +66,7 @@ namespace LabGuard.Core.Settings
                 "极域默认 TopDomainClient / TopDomainClientHelper；留空 = 不检查服务",
                 c => c.Classroom.RequiredServices, (c, v) => c.Classroom.RequiredServices = (List<string>)v));
             list.Add(Bool("1、电子教室保护", "Classroom.ResumeWhenSuspended", "被挂起时强制恢复",
-                "对应原版「电子教室程序被暂停！」的处置（NtResumeProcess）",
+                "「课堂软件的进程被挂起！已自动恢复。」的处置（NtResumeProcess）",
                 c => c.Classroom.ResumeWhenSuspended, (c, v) => c.Classroom.ResumeWhenSuspended = (bool)v));
             list.Add(Bool("1、电子教室保护", "Classroom.RelaunchWhenKilled", "被结束进程时自动重新拉起", null,
                 c => c.Classroom.RelaunchWhenKilled, (c, v) => c.Classroom.RelaunchWhenKilled = (bool)v));
@@ -96,10 +96,10 @@ namespace LabGuard.Core.Settings
                 "按启动时记录的基线用 netsh 改回（DHCP 的机器改回 source=dhcp）",
                 c => c.Network.RestoreOriginalIp, (c, v) => c.Network.RestoreOriginalIp = (bool)v));
             list.Add(Bool("2、网络与防火墙", "Network.ForceFirewallOff", "发现防火墙「阻止所有传入连接」时强制关闭",
-                "原版行为：netsh advfirewall set allprofiles state off",
+                "执行：netsh advfirewall set allprofiles state off",
                 c => c.Network.ForceFirewallOff, (c, v) => c.Network.ForceFirewallOff = (bool)v));
             list.Add(Bool("2、网络与防火墙", "Network.LockOnViolation", "网络违规时全屏锁定",
-                "拔网线/改 IP 时锁屏（原版默认更狠；关闭则只提示 + 自动恢复）",
+                "拔网线/改 IP 时锁屏（关闭则只提示 + 自动恢复）",
                 c => c.Network.LockOnViolation, (c, v) => c.Network.LockOnViolation = (bool)v));
             list.Add(Bool("2、网络与防火墙", "Network.ShutdownOnViolation", "网络违规时关机/重启【危险】",
                 "仅在确认要「零容忍」时打开；会让一节普通的网线松动变成关机",
@@ -153,7 +153,7 @@ namespace LabGuard.Core.Settings
                 "Dexpot / MultiDesk 等（学生用虚拟桌面脱离电子教室）", c => c.ProcessBlock.BlockVirtualDesktop,
                 (c, v) => c.ProcessBlock.BlockVirtualDesktop = (bool)v));
             list.Add(Bool("4、违规软件拦截", "ProcessBlock.BlockAntiVirus", "拦截杀毒/安全管家",
-                "360safe / HipsTray(火绒) / QQPCTray 等（对应原版 shadu_jianche）",
+                "360safe / HipsTray(火绒) / QQPCTray 等（shadu_jianche）",
                 c => c.ProcessBlock.BlockAntiVirus, (c, v) => c.ProcessBlock.BlockAntiVirus = (bool)v));
             list.Add(Bool("4、违规软件拦截", "ProcessBlock.BlockArchivers", "拦截解压软件",
                 "防止学生解压下载来的破解包", c => c.ProcessBlock.BlockArchivers,
@@ -216,10 +216,10 @@ namespace LabGuard.Core.Settings
             list.Add(Bool("7、hosts 黑名单（有集中 DNS 时不需要）", "Hosts.Guard", "守护 hosts（被删/被改就恢复）", null,
                 c => c.Hosts.Guard, (c, v) => c.Hosts.Guard = (bool)v));
             list.Add(Bool("7、hosts 黑名单（有集中 DNS 时不需要）", "Hosts.HideHostsFile", "隐藏 hosts 文件（隐藏属性）",
-                "原版做法；便于减少学生手工改文件的动机", c => c.Hosts.HideHostsFile,
+                "便于减少学生手工改文件的动机", c => c.Hosts.HideHostsFile,
                 (c, v) => c.Hosts.HideHostsFile = (bool)v));
             list.Add(Bool("7、hosts 黑名单（有集中 DNS 时不需要）", "Hosts.UseBuiltInDomains", "使用内置 75 条域名清单",
-                "蓝奏/网盘/poki 等（来自原版 hmd_local.txt）", c => c.Hosts.UseBuiltInDomains,
+                "蓝奏/网盘/poki 等（可自行增删）", c => c.Hosts.UseBuiltInDomains,
                 (c, v) => c.Hosts.UseBuiltInDomains = (bool)v));
             list.Add(Text("7、hosts 黑名单（有集中 DNS 时不需要）", "Hosts.SinkAddress", "屏蔽目标地址",
                 "127.0.0.1（默认）或 0.0.0.0（更彻底）", c => c.Hosts.SinkAddress,
@@ -244,7 +244,7 @@ namespace LabGuard.Core.Settings
             list.Add(Bool("8、浏览器管控", "Browser.BlockIeDownload", "禁止 IE 下载", null,
                 c => c.Browser.BlockIeDownload, (c, v) => c.Browser.BlockIeDownload = (bool)v));
             list.Add(Text("8、浏览器管控", "Browser.Homepage", "浏览器主页（留空 = 不改）",
-                "建议填学校自己的导航页；原版是改成自家导航站变现",
+                "建议填学校自己的导航页；留空则不改学生机主页",
                 c => c.Browser.Homepage, (c, v) => c.Browser.Homepage = (string)v));
             list.Add(Bool("8、浏览器管控", "Browser.HijackShortcuts", "接管浏览器快捷方式（指向本程序上网入口）",
                 "默认关闭；开启后桌面/开始菜单里的浏览器快捷方式会先经过 LabGuard.Launcher",
@@ -294,7 +294,7 @@ namespace LabGuard.Core.Settings
             list.Add(Bool("11、桌面壁纸与机器编号", "Wallpaper.ShowMachineNumber", "右上角显示机器编号", null,
                 c => c.Wallpaper.ShowMachineNumber, (c, v) => c.Wallpaper.ShowMachineNumber = (bool)v));
             list.Add(Number("11、桌面壁纸与机器编号", "Wallpaper.MachineNumberChars", "编号取计算机名后几位",
-                "默认 6 位（原版行为）", 1, 32, c => c.Wallpaper.MachineNumberChars,
+                "默认 6 位（行为）", 1, 32, c => c.Wallpaper.MachineNumberChars,
                 (c, v) => c.Wallpaper.MachineNumberChars = (int)v));
             list.Add(Bool("11、桌面壁纸与机器编号", "Wallpaper.GuardWallpaper", "壁纸被改时自动恢复", null,
                 c => c.Wallpaper.GuardWallpaper, (c, v) => c.Wallpaper.GuardWallpaper = (bool)v));
@@ -319,10 +319,10 @@ namespace LabGuard.Core.Settings
             list.Add(Number("13、互相守护与自我保护", "Watchdog.AgentRestartSeconds", "代理被结束后多少秒重新拉起",
                 null, 5, 600, c => c.Watchdog.AgentRestartSeconds, (c, v) => c.Watchdog.AgentRestartSeconds = (int)v));
             list.Add(Bool("13、互相守护与自我保护", "Watchdog.RebootOnServiceFailure", "服务异常时重启电脑【危险】",
-                "原版用 sc failure actions=reboot；默认关（只重启服务），打开前请想清楚",
+                "默认关（只重启服务），打开前请想清楚",
                 c => c.Watchdog.RebootOnServiceFailure, (c, v) => c.Watchdog.RebootOnServiceFailure = (bool)v, dangerous: true));
             list.Add(Bool("13、互相守护与自我保护", "Watchdog.LockOnIntegrityFailure", "关键文件被删改时锁定",
-                "杀毒软件误删程序文件时会触发锁定（原版「缺文件就蓝屏锁定」）",
+                "杀毒软件误删程序文件时会触发锁定（关键文件缺失时锁定）",
                 c => c.Watchdog.LockOnIntegrityFailure, (c, v) => c.Watchdog.LockOnIntegrityFailure = (bool)v));
 
             return list;

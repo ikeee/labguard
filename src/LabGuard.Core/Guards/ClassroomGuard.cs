@@ -9,7 +9,7 @@ using Microsoft.Win32;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// 电子教室保护（原版 jfglzsn 主战场）：
+    /// 电子教室保护（核心模块）：
     /// 1) 进程被挂起 → 强制恢复；2) 进程被结束 → 重新拉起；
     /// 3) 关键服务被停止 → 重新启动；4) 极域频道/自动登录参数被改 → 还原；5) 找不到进程 → 报告。
     /// </summary>
@@ -48,7 +48,7 @@ namespace LabGuard.Core.Guards
             {
                 _killedCount++;
                 SetStatus("进程未运行（第 " + _killedCount + " 次检测到）");
-                Context.Report(Name, "电子教室进程未找到或本地连接IP地址错误！", HostAction(),
+                Context.Report(Name, "未找到课堂软件进程（或本机网络地址异常）。", HostAction(),
                     "进程：" + procName);
                 if (c.RelaunchWhenKilled) Relaunch();
                 return;
@@ -59,7 +59,7 @@ namespace LabGuard.Core.Guards
                 if (c.ResumeWhenSuspended && SystemActions.IsProcessSuspended(p))
                 {
                     SetStatus("检测到进程被挂起，已强制恢复");
-                    Context.Report(Name, "电子教室程序被暂停！已强制恢复。", ViolationAction.Notify, procName);
+                    Context.Report(Name, "课堂软件的进程被挂起，已自动恢复。", ViolationAction.Notify, procName);
                     SystemActions.ResumeProcess(p);
                 }
                 p.Dispose();
@@ -97,7 +97,7 @@ namespace LabGuard.Core.Guards
                 int ch;
                 if (!int.TryParse(channel.ToString(), out ch) || ch <= 0)
                 {
-                    Context.Report(Name, "你修改了极域电子教室的参数！请马上恢复，否则会锁屏！", ViolationAction.Notify, key);
+                    Context.Report(Name, "课堂软件的频道/登录参数被修改，已自动还原。", ViolationAction.Notify, key);
                     SystemActions.SetRegistryValue(RegistryHive.LocalMachine, key, "ChannelId", 1, RegistryValueKind.DWord);
                 }
             }

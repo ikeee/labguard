@@ -88,7 +88,7 @@ namespace LabGuard.Core.Guards
         string Name { get; }
         string Status { get; }
         void Start(GuardContext context);
-        /// <summary>停止并在需要时把系统状态还原（对应原版"退出小助手"）。</summary>
+        /// <summary>停止并在需要时把系统状态还原（"退出小助手"）。</summary>
         void Stop();
     }
 }

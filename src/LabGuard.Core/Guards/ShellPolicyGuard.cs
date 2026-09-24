@@ -6,7 +6,7 @@ using Microsoft.Win32;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// 任务栏 / 系统工具策略（原版 win_jian、gaowei、zcb 等）：
+    /// 任务栏 / 系统工具策略（）：
     /// 隐藏任务视图（虚拟桌面入口）、禁任务栏右键、禁任务管理器/注册表编辑器/cmd、
     /// 隐藏文件扩展名与文件夹选项、可选禁止锁定工作站。
     /// </summary>
@@ -33,7 +33,7 @@ namespace LabGuard.Core.Guards
                 ok &= Convert.ToInt32(SystemActions.GetRegistryValue(RegistryHive.CurrentUser, PoliciesSystem, "DisableTaskMgr") ?? 0) == 1;
             if (!ok)
             {
-                Context.Report(Name, "你修改了小助手设置！现在助手强制恢复！", ViolationAction.Notify);
+                Context.Report(Name, "检测到管控策略被修改，已自动还原。", ViolationAction.Notify);
                 Apply();
             }
             SetStatus(ok ? "策略生效中" : "已恢复被改动的策略");

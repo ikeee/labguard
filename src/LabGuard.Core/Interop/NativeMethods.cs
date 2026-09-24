@@ -6,7 +6,7 @@ namespace LabGuard.Core.Interop
 {
     internal static class NativeMethods
     {
-        // ---- 进程挂起/恢复与系统权限（原版 jfglzsn 同款手法） ----
+        // ---- 进程挂起/恢复与系统权限（所需的最小权限） ----
         [DllImport("ntdll.dll", SetLastError = true)]
         internal static extern int NtSuspendProcess(IntPtr processHandle);
 

@@ -7,7 +7,7 @@ using Microsoft.Win32;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// 安全模式与启动菜单（原版）：删除 SafeBoot\Network（禁止"带网络连接的安全模式"）、隐藏启动菜单。
+    /// 安全模式与启动菜单（）：删除 SafeBoot\Network（禁止"带网络连接的安全模式"）、隐藏启动菜单。
     /// 删除前会把整棵子树导出成 .reg 备份，退出时还原。
     /// </summary>
     public sealed class SafeModeGuard : GuardBase
@@ -34,7 +34,7 @@ namespace LabGuard.Core.Guards
             if (Context.Config.SafeMode.BlockNetworkSafeMode &&
                 SystemActions.RegistryKeyExists(RegistryHive.LocalMachine, SafeBootNetwork))
             {
-                Context.Report(Name, "检测到带网络连接的安全模式被恢复，已重新禁用。", ViolationAction.Notify);
+                Context.Report(Name, "检测到「带网络的安全模式」被恢复，已重新禁用。", ViolationAction.Notify);
                 RemoveSafeBootNetwork();
                 removed = true;
             }

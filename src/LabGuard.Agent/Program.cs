@@ -46,7 +46,7 @@ namespace LabGuard.Agent
                 DateTime deadline = DateTime.Now.AddSeconds(Math.Max(3, seconds));
                 var cfg = ConfigStore.Load();
                 var mask = new LabGuard.Core.UI.DisconnectMaskForm();
-                mask.ShowMask("机位 DEMO-01", "网络已断开（预览）", "请把网线插回 / 或启用网络连接",
+                mask.ShowMask("机位 DEMO-01", "网络已断开（预览）", "请插回网线或启用网络连接",
                     string.IsNullOrEmpty(cfg.PasswordHash) ? PasswordHasher.Create("a1b2c3") : cfg.PasswordHash,
                     true, true,
                     () =>
@@ -103,10 +103,10 @@ namespace LabGuard.Agent
             Application.SetCompatibleTextRenderingDefault(false);
             if (string.IsNullOrEmpty(config.PasswordHash))
             {
-                MessageBox.Show("尚未设置密码，无需解锁。", "机房管理助手");
+                MessageBox.Show("尚未设置密码，无需解锁。", "LabGuard");
                 return;
             }
-            using (var dlg = new LabGuard.Core.UI.PasswordDialog("机房管理助手 - 解除锁定/暂停监控", "输入小助手密码：", config.PasswordHash))
+            using (var dlg = new LabGuard.Core.UI.PasswordDialog("LabGuard - 解除锁定/暂停监控", "输入小助手密码：", config.PasswordHash))
             {
                 if (dlg.ShowDialog() != DialogResult.OK) return;
             }
@@ -119,7 +119,7 @@ namespace LabGuard.Agent
             }
             LabGuard.Core.Interop.SystemActions.Run("net.exe", "stop " + WatchdogGuard.ServiceName);
             MessageBox.Show("已暂停监控并解除锁定。\r\n\r\n要恢复监控：运行【设置】后保存，或再次运行小助手。",
-                "机房管理助手", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                "LabGuard", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }

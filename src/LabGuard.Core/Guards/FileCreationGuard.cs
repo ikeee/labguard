@@ -8,7 +8,7 @@ using LabGuard.Core.Logging;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// 新文件 / 下载监控（原版 przs 的 tdfilefilter / tdnetfilter）：
+    /// 新文件 / 下载监控（文件系统监控）：
     /// 监控指定目录，出现高危扩展名的新文件即删除并提示；
     /// 三档模式：全部允许 / 仅 C++ 可生成新 exe / 全部禁止。
     /// </summary>
@@ -101,13 +101,13 @@ namespace LabGuard.Core.Guards
 
                 string message = string.Equals(ext, ".exe", StringComparison.OrdinalIgnoreCase)
                     ? (mode == "CPPONLY"
-                        ? "本电脑禁止创建新的exe文件，再次操作会锁屏！老师请先退出小助手，重新安装软件。你也可重新设置：允许（不建议）"
-                        : "本电脑禁止创建新的exe、dll变相文件，再次操作会锁屏！")
+                        ? "本机禁止生成新的 exe 文件；需要安装软件时请老师用密码暂停管控。"
+                        : "本机禁止生成新的 exe/dll 文件。")
                     : string.Equals(ext, ".msi", StringComparison.OrdinalIgnoreCase)
-                        ? "本电脑禁止创建新的msi等高危文件！"
+                        ? "本机禁止生成新的 msi 等高危文件。"
                         : string.Equals(ext, ".reg", StringComparison.OrdinalIgnoreCase) || string.Equals(ext, ".bat", StringComparison.OrdinalIgnoreCase)
-                            ? "本电脑禁止创建新的reg、bat等高危文件，再次操作会锁屏！"
-                            : "本电脑禁止下载安装软件，再次操作会锁屏！如果确有需要，请老师来退出小助手。";
+                            ? "本机禁止生成新的 reg/bat 等高危文件。"
+                            : "本机禁止下载/安装软件；如确有需要，请老师用密码暂停管控。";
 
                 _strikes++;
                 bool delete = string.Equals(cfg.Action, "Delete", StringComparison.OrdinalIgnoreCase);

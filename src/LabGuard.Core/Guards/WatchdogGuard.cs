@@ -10,7 +10,7 @@ using LabGuard.Core.Logging;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// 互相守护（原版 zmserv + sc failure reboot 的思路）：
+    /// 互相守护（服务与代理互相守护）：
     /// 1) 服务/代理进程被结束 → 自动重新拉起；2) 关键文件被删改 → 校验哈希并告警/锁定；
     /// 3) pause.flag 标记"老师已用密码暂停"，暂停期间不强行拉起，避免互相打架。
     /// </summary>

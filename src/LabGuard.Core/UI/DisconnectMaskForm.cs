@@ -111,7 +111,7 @@ namespace LabGuard.Core.UI
 
             _title.Text = headLine;
             _hint.Text = advice + Environment.NewLine + Environment.NewLine +
-                         "（把网线插回去，10 秒内自动恢复；老师连续按 5 次 Esc 可输入密码解除，解除后监控暂停）";
+                         "（恢复网络后 10 秒内自动消失；老师连续按 5 次 Esc 可输入密码解除）";
             _number.Text = machineNumber;
 
             LoadBackground(randomWallpaper);
@@ -210,7 +210,7 @@ namespace LabGuard.Core.UI
         {
             _tick.Stop();
             Cursor.Show();
-            using (var dlg = new PasswordDialog("机房管理助手 · 解除断网遮罩",
+            using (var dlg = new PasswordDialog("LabGuard · 解除断网遮罩",
                        "输入小助手密码（解除后监控会暂停，避免马上又弹出）：", _passwordHash))
             {
                 if (dlg.ShowDialog() == DialogResult.OK)

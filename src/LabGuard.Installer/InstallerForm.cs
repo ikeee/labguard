@@ -19,7 +19,7 @@ namespace LabGuard.Installer
         private readonly Label _status = new Label { AutoSize = true, ForeColor = Color.DimGray };
 
         private readonly TextBox _dir = new TextBox { Width = 520 };
-        private readonly RadioButton _dirDefault = new RadioButton { Text = "推荐：内存指纹路径（与原版同款，学生不容易找到）" };
+        private readonly RadioButton _dirDefault = new RadioButton { Text = "推荐：系统程序目录（普通用户不可写，便于统一维护）" };
         private readonly RadioButton _dirCustom = new RadioButton { Text = "自定义：" };
         private readonly TextBox _pwd = new TextBox { Width = 220, UseSystemPasswordChar = true };
         private readonly TextBox _pwd2 = new TextBox { Width = 220, UseSystemPasswordChar = true };
@@ -80,20 +80,20 @@ namespace LabGuard.Installer
                 Font = new Font("微软雅黑", 10F),
                 Text = string.Join(Environment.NewLine, new[]
                 {
-                    "感谢使用【机房管理助手（复刻）】。",
+                    "感谢使用【LabGuard】。",
                     "",
                     "这是一套面向学校计算机机房的本地管控程序：保护电子教室（极域/红蜘蛛/锐捷云课堂）不被学生脱离控制，",
                     "规范上机行为（下载、小游戏、任务管理器/注册表、U 盘、浏览器下载等），并在教师机部署 AdGuard 时配合集中 DNS 过滤。",
                     "",
                     "安装程序会做这些事：",
-                    "  · 释放程序文件到安装目录（默认 C:\\f<内存指纹>，与原版同款）",
+                    "  · 释放程序文件到安装目录（默认 C:\\Program Files\\LabGuard）",
                     "  · 把该目录权限收紧为「管理员/SYSTEM 完全控制，普通用户只读」",
                     "  · 注册 Windows 服务 LabGuardSvc（守护 + 系统级策略）",
                     "  · 创建“登录时以最高权限运行小助手”的计划任务（不需要修改 UAC 设置）",
                     "  · 创建桌面/开始菜单快捷方式、登记“控制面板→卸载”",
                     "  · 写入你下一步选择的策略与密码",
                     "",
-                    "与原版最大的不同（请放心）：",
+                    "与最大的不同（请放心）：",
                     "  · 不要求卸载杀毒软件、不关闭 Windows Defender（建议把安装目录加入杀软白名单即可）",
                     "  · 不劫持浏览器主页、不冒充其它软件、不隐藏改动痕迹",
                     "  · 老师随时可用密码暂停/退出，卸载程序会把所有改动逐项还原",
@@ -140,7 +140,7 @@ namespace LabGuard.Installer
             var hint = new Label
             {
                 Left = 20, Top = 140, Width = 800, Height = 90, ForeColor = Color.DimGray,
-                Text = "· 默认路径由本机内存大小算出（原版做法），学生不容易猜到哪里装了管控程序。\n" +
+                Text = "· 默认装在系统程序目录：普通用户不可写，也不能随手删除；路径固定，便于统一维护。\n" +
                        "· 若学校习惯统一目录（便于维护、便于组策略下发），请选“自定义”，例如 C:\\LabGuard。\n" +
                        "· 无论选哪个，安装目录都会自动收紧权限，普通用户只能读、不能改。"
             };
@@ -208,7 +208,7 @@ namespace LabGuard.Installer
             var lbl = new Label
             {
                 Dock = DockStyle.Top, Height = 44, Font = new Font("微软雅黑", 10F),
-                Text = "确认无误后点右下角【开始安装】。安装过程约 5~15 秒，完成后桌面会多一个“学生机房管理助手”快捷方式。"
+                Text = "确认无误后点右下角【开始安装】。安装过程约 5~15 秒，完成后桌面会多一个“LabGuard”快捷方式。"
             };
             _startNow.Checked = true;
             var panel = new Panel { Dock = DockStyle.Top, Height = 34 };
@@ -331,11 +331,11 @@ namespace LabGuard.Installer
                 _status.Text = "安装完成";
                 if (MessageBox.Show(
                         "安装完成！" + Environment.NewLine + Environment.NewLine +
-                        "· 桌面已创建“学生机房管理助手”快捷方式" + Environment.NewLine +
+                        "· 桌面已创建“LabGuard”快捷方式" + Environment.NewLine +
                         "· 托盘小助手会随登录自动运行" + Environment.NewLine +
                         "· 以后要改策略：开始菜单 → 设置（需密码）" + Environment.NewLine + Environment.NewLine +
                         "现在打开设置程序确认一遍策略吗？",
-                        "机房管理助手", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                        "LabGuard", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
                 {
                     try
                     {
@@ -351,7 +351,7 @@ namespace LabGuard.Installer
             catch (Exception ex)
             {
                 _progress.AppendText("安装失败：" + ex + Environment.NewLine);
-                MessageBox.Show("安装失败：" + ex.Message, "机房管理助手", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("安装失败：" + ex.Message, "LabGuard", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 _btnNext.Enabled = true;
                 _btnCancel.Enabled = true;
             }
