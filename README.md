@@ -5,8 +5,10 @@
 > **English TL;DR** — LabGuard is an open-source, self-healing policy guard for Windows PCs in school computer labs
 > (.NET Framework 4.8). It protects the classroom-management client (TopDomain / Red Spider / Ruijie cloud class)
 > from being killed or suspended by students, enforces lab policies (USB storage, downloads, small games,
-> Task Manager / Registry, browser downloads), can lock students' DNS to a central filter (e.g. AdGuard running
-> on the teacher PC), and ships with a one-file setup wizard where **every single policy has its own on/off switch**.
+> Task Manager / Registry, browser downloads), and ships with a one-file setup wizard where
+> **every single policy has its own on/off switch**.
+> **AdGuard is optional**: the program works with no DNS filtering at all; if you run AdGuard on the teacher PC,
+> you can additionally turn on "lock students' DNS to it" (off by default). Details below.
 > It is a clean-room reimplementation — no binaries from the original closed-source tool are included.
 > There is always a teacher escape hatch: `scripts/cleanup-all.ps1` fully uninstalls and reverts everything.
 > Docs are in Chinese (target: Chinese K-12 lab teachers).
@@ -29,29 +31,71 @@
 | `LabGuard.Launcher.exe` | `zy\*.exe` | 浏览器"上网入口"（可选，默认不接管快捷方式；原版用 9 个冒充浏览器的假程序做主页推广，本复刻不冒充） |
 | `LabGuard.SelfTest.exe` | — | 自检：验证口令/hosts/拦截清单，并用**干跑模式**完整启动-停止引擎（不修改系统） |
 
-## 2. 快速开始
+## 1.5 ⚠️ AdGuard（以及"上网管控"）是**可选项**，不是前置条件
+
+**不装 AdGuard 也能完整使用本程序。** 上网怎么管，你自己选一档，甚至完全不管：
+
+| 档位 | 需要什么 | 在设置里怎么选 | 说明 |
+|---|---|---|---|
+| **A. 不管上网**（默认就是这档） | 什么都不需要 | 第 3 组「集中 DNS」不勾 / 第 7 组「hosts 黑名单」不勾 | 程序只做**电子教室保护 + 行为规范（USB/下载/小游戏/任务管理器…）+ 断网遮罩 + 壁纸编号**。域名过滤完全不做 |
+| **B. 本地 hosts 黑名单** | 什么都不需要 | 第 7 组勾「启用 hosts 域名黑名单」 | 用内置 75 条域名清单（下载站/网盘/小游戏站）+ 自定义域名，写进本机 hosts。**不需要 AdGuard、不需要服务器**；缺点：学生若拿到管理员权限可直接改 hosts（程序会把 hosts 设为只读并守候还原） |
+| **C. 集中 DNS 过滤**（可选加强） | 教师机（或校内服务器）上跑 **AdGuard Home**（或其他 DNS 过滤服务） | 第 3 组：填教师机 IP + 勾「锁定学生机 DNS」+ 勾「关闭 DoH」 | 过滤对学生机**所有程序**统一生效、学生本地无文件可改；程序会每 15 秒核对 DNS 被改就改回，并关闭浏览器/系统加密 DNS（DoH）。**代价：教师机是单点**，AdGuard 不开机 → 学生机域名解析失效（表现为"没网"） |
+
+要点：
+
+- **默认配置（`A` 档）不需要 AdGuard**：装上就能用，不会因为"没配 DNS"而报错或功能缺失。
+- 选 `C` 档才需要 AdGuard；而且**只填一个 IP**，不填就不锁定（适合校园网 DHCP 统一下发 DNS 的场景）。
+- `B` 和 `C` 可以同时开（互为补充），也可以只开一个。
+- 相关开关都在设置程序第 3 组 / 第 7 组，随你改；`--show-config` 能一眼看到当前处于哪一档。
+
+## 2. 安装（用一键安装程序 `LabGuard-Setup.exe`）
+
+**推荐路径（老师用这个）**：从 [Releases](https://github.com/ikeee/labguard/releases) 下载
+**`LabGuard-Setup-v0.01.exe`**（单文件，内置程序与壁纸）→ 拷到学生机 → **双击**（会弹 UAC）→ 按向导走：
+
+| 向导步骤 | 你要做的事 |
+|---|---|
+| 1. 欢迎 | 看一遍它会做什么（含"不卸杀毒、不改 UAC、不劫持主页"），勾选"我已阅读并了解" |
+| 2. 安装位置 | 默认 `C:\f<本机内存指纹>`（原版同款，学生不容易找到）；也可自定义（如 `C:\LabGuard`） |
+| 3. 设置密码 | 输两遍；6 位及以上字母数字，弱口令会被拒绝 |
+| 4. **功能开关（94 项）** | 先套预设（普通PC机房 / 一体机机房 / 只管电子教室 / 全部放开），再逐项勾选；**AdGuard 相关的"集中 DNS"就在这里，不勾就是 A 档** |
+| 5. 安装 | 点【开始安装】→ 实时日志 → 完成后可勾"立即启用监控"，并可一键打开设置复核 |
+
+装完自检（3 分钟）：
 
 ```powershell
-# 1) 构建（需要 .NET SDK 8；产物为 net48，Win7/10/11 直接可跑）
-powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -SelfTest
-
-# 2) 安装（管理员 PowerShell，在 dist 目录里执行）
-powershell -ExecutionPolicy Bypass -File install.ps1
-#   不想用"内存指纹"随机目录时：install.ps1 -SimplePath -InstallDir C:\LabGuard
-
-# 3) 打开【设置】程序，设置密码并逐项选择策略（未设密码前监控不启用）
-
-# 4) 卸载
-powershell -ExecutionPolicy Bypass -File uninstall.ps1
+# 在安装目录里（默认 C:\f<内存指纹>，用 --show-config 能看到实际路径）
+LabGuard.SelfTest.exe            # 全绿才算装好
+LabGuard.Settings.exe --show-config   # 核对当前策略（含"集中 DNS 是否为未配置"）
 ```
 
-**先在 1 台学生机上试用一周**，确认与你的电子教室 / 考试软件（mpython、3D One、人机对话等）兼容后再批量部署。
+卸载：开始菜单 →「机房管理助手」→ 卸载（**要密码**）。
+
+> **顺序很重要**：装好后默认禁用 U 盘，所以**先把安装包拷进机器，再安装**；之后要用 U 盘就用密码暂停小助手。
+> **不需要**卸载杀毒软件、**不需要**把 UAC 改成"从不通知"（与原版不同）；把安装目录加入杀软白名单即可。
+> **先在 1 台学生机上试用一周**（含一次真实课堂），确认与你的电子教室 / 考试软件（mpython、3D One、人机对话等）兼容后再批量部署。
+
+### 2.1 批量部署 / 无人值守（可选，脚本方式）
+
+一个机房几十台时，用发布包里的脚本更快（详见 [docs/04-机房部署指南.md](docs/04-机房部署指南.md)）：
+
+```powershell
+# 无人值守安装（脚本方式；包在 labguard-v0.01.zip 的 dist\ 目录里）
+powershell -ExecutionPolicy Bypass -File install.ps1 -Password "你的密码123" -Dns "192.168.1.10"
+#   -Dns 只在你要用 C 档（集中 DNS）时才需要；不填就是 A 档
+#   -ConfigJson "presets\主机房-普通PC.json" 可套用预设；-DryRun 可先预演（不改系统）
+
+# 一键安装程序同样支持无人值守：
+LabGuard-Setup-v0.01.exe --silent --password "你的密码123" [--config presets\xxx.json] [--dns 192.168.1.10] [--no-start]
+```
+
+也可以从源码构建（需要 .NET SDK 8）：`scripts\build.ps1 -SelfTest` → `scripts\build-installer.ps1`（会同时产出安装程序与发布包）。
 
 > `LabGuard.Settings.exe` 与 `LabGuard.Uninstall.exe` 需要管理员权限（会弹 UAC）；`LabGuard.Agent.exe` 由安装时创建的"最高权限计划任务"拉起。
 
-## 2.1 所有功能都由你自己开关（80 项全覆盖）
+## 2.2 所有功能都由你自己开关（94 项全覆盖）
 
-- 配置项共 **94 个属性**，其中 **80 个是真开关**，全部在设置程序里可见可改，分成 **14 组**：
+- 配置项共 **94 个属性**，其中 **94 个都是可开关/可填写的项**（含"集中 DNS""hosts 黑名单"这类**可选上网管控**），全部在设置程序里可见可改，分成 **14 组**：
   总体 / 电子教室保护 / 网络与防火墙 / 集中 DNS / 违规软件拦截 / 新文件监控 / USB / hosts / 浏览器 /
   任务栏与系统工具 / 安全模式 / 桌面壁纸与编号 / 注册表权限加固 / 互相守护。
 - 每个开关 = 一个控件（勾选 / 下拉 / 数字 / 路径 / 多行列表），带中文说明；会造成关机、重启这类后果的项**标红加【危险】**，默认关闭。
@@ -79,7 +123,7 @@ powershell -ExecutionPolicy Bypass -File uninstall.ps1
 | 任务视图（虚拟桌面）与 Win 键 | `ShowTaskViewButton=0` + 低级键盘钩子吞掉 Win 键 |
 | 新 exe/reg/bat/zip… 文件 | `FileSystemWatcher` 监控下载目录与根目录，三档模式（全部允许 / 仅 C++ / 全部禁止） |
 | USB 存储设备 | `usbstor` 驱动 `Start=4`（键鼠保留），被改回即告警并重新禁用 |
-| **上网管控（主防线）** | **集中 DNS 锁定**：学生机 DNS 必须指向教师机 AdGuard（或校内 DNS），每 15 秒核对、被改即 `netsh` 改回；并关闭 Chrome/Edge/Firefox/Win11 的 **DoH**（否则一次点击就能绕过过滤）；另带"AdGuard 是否存活"的 UDP 53 探针 |
+| **上网管控（可选三档，见 §1.5）** | ① 不控（默认）② **本地 hosts 黑名单**（内置 75 条 + 自定义，纯本机）③ **集中 DNS 锁定**（可选，配合教师机 AdGuard：DNS 被改即 `netsh` 改回、关闭 Chrome/Edge/Firefox/Win11 的 **DoH**、带 AdGuard 存活探针） |
 | 下载站/网盘/游戏站 | **默认关闭**（有集中 DNS 就不需要）。开启时：hosts 受管区块（原版 75 条清单 + 自定义）、隐藏、被删被改即恢复；**不开也保护 hosts**：ACL 收紧为普通用户只读 + **内容守候**（学生哪怕用管理员权限往里写映射，也在 20 秒内被还原并记日志） |
 | 浏览器下载/另存为/开发者工具/小恐龙/冲浪 | Chrome/Edge/Firefox/IE 组策略（不碰浏览器本体） |
 | 带网络的安全模式 | 删除 `SafeBoot\Network`（删除前导出 `.reg` 备份，退出/卸载时还原） |
