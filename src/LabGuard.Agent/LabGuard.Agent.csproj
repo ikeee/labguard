@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>LabGuard.Agent</RootNamespace>
+    <AssemblyName>LabGuard.Agent</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <NoWarn>CS0618;CS1591</NoWarn>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Product>机房管理助手（复刻）小助手</Product>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LabGuard.Core\LabGuard.Core.csproj" />
+  </ItemGroup>
+</Project>

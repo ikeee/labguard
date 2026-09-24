@@ -1,0 +1,15 @@
+<Project>
+  <!-- 版本号统一在这里改：所有项目共用 -->
+  <PropertyGroup>
+    <Version>0.0.1</Version>
+    <AssemblyVersion>0.0.1.0</AssemblyVersion>
+    <FileVersion>0.0.1.0</FileVersion>
+    <Company>LabGuard (open source)</Company>
+    <Product>机房管理助手（复刻）/ LabGuard</Product>
+    <Copyright>MIT License</Copyright>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <NoWarn>CS0618;CS1591</NoWarn>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+</Project>

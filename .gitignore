@@ -1,0 +1,17 @@
+# 构建产物
+bin/
+obj/
+dist/
+release/
+src/LabGuard.Installer/payload/
+
+# 会话/分析辅助工具（含本地绝对路径，不对外）
+_tools/
+
+# 运行时产物
+*.user
+*.suo
+*.log
+paused.flag
+files.sha256
+config.json
