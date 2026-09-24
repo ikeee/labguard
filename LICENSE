@@ -19,13 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-说明（与源码许可的关系）：
-
-1. 本仓库的**源代码与脚本**（src/、scripts/、presets/）采用上面的 MIT 许可，可自由使用、修改、再分发。
-2. `docs/01-原理分析-原版学生机房管理助手v13.03.md` 是对**第三方商业软件**（该软件版权归其作者所有）
-   的**互操作性/教学用分析笔记**，其中提到的产品名、界面文案、域名清单等仅用于说明"它做了什么"，
-   不包含、也不提供该软件的二进制文件；本仓库与该软件作者无关。
-3. 请遵守当地法律法规与学校规定使用本项目；本项目仅供学校自有教学机房的自有设备管理使用。
