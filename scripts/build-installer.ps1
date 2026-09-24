@@ -68,6 +68,8 @@ foreach ($item in @('presets', 'docs')) {
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $staging -Force
 if (Test-Path (Join-Path $root 'CHANGELOG.md')) { Copy-Item -LiteralPath (Join-Path $root 'CHANGELOG.md') -Destination $staging -Force }
 if (Test-Path (Join-Path $root 'LICENSE')) { Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination $staging -Force }
+if (Test-Path (Join-Path $root 'NOTICE.md')) { Copy-Item -LiteralPath (Join-Path $root 'NOTICE.md') -Destination $staging -Force }
+if (Test-Path (Join-Path $root '.gitignore')) { Copy-Item -LiteralPath (Join-Path $root '.gitignore') -Destination $staging -Force }
 Copy-Item -LiteralPath $dst -Destination (Join-Path $staging 'LabGuard-一键安装程序.exe') -Force
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
