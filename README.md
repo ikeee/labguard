@@ -2,6 +2,15 @@
 
 **当前版本：v0.01**（2026-09-24 首个公开版本）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
 
+> **English TL;DR** — LabGuard is an open-source, self-healing policy guard for Windows PCs in school computer labs
+> (.NET Framework 4.8). It protects the classroom-management client (TopDomain / Red Spider / Ruijie cloud class)
+> from being killed or suspended by students, enforces lab policies (USB storage, downloads, small games,
+> Task Manager / Registry, browser downloads), can lock students' DNS to a central filter (e.g. AdGuard running
+> on the teacher PC), and ships with a one-file setup wizard where **every single policy has its own on/off switch**.
+> It is a clean-room reimplementation — no binaries from the original closed-source tool are included.
+> There is always a teacher escape hatch: `scripts/cleanup-all.ps1` fully uninstalls and reverts everything.
+> Docs are in Chinese (target: Chinese K-12 lab teachers).
+
 对 Windows 学生机房常见"学生端管控软件"的**开源复刻实现**。功能定位与原版《学生机房管理助手 v13.03》等价：
 保护电子教室（极域/红蜘蛛/锐捷云课堂）不被学生脱控、规范机房上机行为、统一壁纸与机器编号。
 
