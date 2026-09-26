@@ -58,6 +58,25 @@ namespace LabGuard.Installer
                 return;
             }
 
+            // --screenshot <目录>：把向导各页面渲染成 PNG（不安装、不改系统），供文档与人工核对
+            int shotIndex = Array.IndexOf(args ?? new string[0], "--screenshot");
+            if (shotIndex >= 0)
+            {
+                string shotDir = args.Length > shotIndex + 1
+                    ? args[shotIndex + 1]
+                    : Path.Combine(Path.GetTempPath(), "labguard-wizard");
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                using (var shotForm = new InstallerForm())
+                {
+                    LabGuard.Core.UI.UiCapture.ShowOffScreen(shotForm);
+                    foreach (string f in shotForm.RenderScreenshots(shotDir)) Console.WriteLine(f);
+                    shotForm.Hide();
+                    Console.WriteLine("向导截图目录：" + shotDir);
+                }
+                return;
+            }
+
             bool silent = Has(args, "--silent") || Has(args, "--dry-run");
             if (!silent)
             {

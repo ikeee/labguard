@@ -8,19 +8,21 @@ using System.Windows.Forms;
 using LabGuard.Core.Config;
 using LabGuard.Core.Guards;
 using LabGuard.Core.Interop;
-using LabGuard.Core.Settings;
+using LabGuard.Core.UI;
 
 namespace LabGuard.Settings
 {
     /// <summary>
-    /// 设置程序：界面完全由 <see cref="SettingsCatalog"/> 渲染，
-    /// 因此 GuardConfig 里**每一个**可配置项都有对应的开关（自检强制保证，不会漏项）。
+    /// 设置程序：主体是 <see cref="SettingsPanel"/>（左侧分组导航 + 搜索 + 只看已改动 + 改动计数，
+    /// 内容由 <see cref="LabGuard.Core.Settings.SettingsCatalog"/> 驱动，共 14 组 / 92 项）。
+    /// 底部另有口令、导出/导入/恢复默认/保存。
     /// </summary>
     public class SettingsForm : Form
     {
         private readonly GuardConfig _config;
-        private readonly FlowLayoutPanel _panel;
-        private readonly List<KeyValuePair<FieldSpec, Control>> _bindings = new List<KeyValuePair<FieldSpec, Control>>();
+        private readonly SettingsPanel _panel;
+        private readonly TextBox _pwd = new TextBox { Width = 180, UseSystemPasswordChar = true };
+        private readonly TextBox _pwd2 = new TextBox { Width = 180, UseSystemPasswordChar = true };
 
         public SettingsForm(GuardConfig config)
         {
@@ -28,273 +30,122 @@ namespace LabGuard.Settings
             Text = LabGuard.Core.AppInfo.ProductName + " v" + LabGuard.Core.AppInfo.Version +
                    " · 设置（所有功能均可自行开关）";
             Font = new Font("微软雅黑", 9F);
-            ClientSize = new Size(900, 760);
+            ClientSize = new Size(1000, 760);
             StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(760, 520);
+            MinimumSize = new Size(900, 560);
 
-            _panel = new FlowLayoutPanel
+            _panel = new SettingsPanel { Dock = DockStyle.Fill };
+            _panel.Refresh(_config);
+
+            // 口令（单独一行，放在开关面板下面）
+            var pwdBox = new GroupBox { Dock = DockStyle.Bottom, Height = 74, Text = "口令（6 位及以上字母或数字；留空 = 不修改）" };
+            var l1 = new Label { Text = "新密码：", Left = 12, Top = 26, Width = 60 };
+            _pwd.Left = 74; _pwd.Top = 22;
+            var l2 = new Label { Text = "再次输入：", Left = 268, Top = 26, Width = 70 };
+            _pwd2.Left = 340; _pwd2.Top = 22;
+            var hint = new Label
             {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false,
-                AutoScroll = true,
-                Padding = new Padding(10)
+                Left = 540, Top = 26, Width = 440, ForeColor = Color.DimGray,
+                Text = "（口令用 PBKDF2-SHA256 保存；也是「暂停/退出/卸载」的密码）"
             };
-
-            foreach (string section in SettingsCatalog.All().Select(f => f.Section).Distinct())
-            {
-                var fields = SettingsCatalog.All().Where(f => f.Section == section).ToList();
-                _panel.Controls.Add(BuildSection(section, fields));
-            }
-            _panel.Controls.Add(BuildPasswordSection());
+            pwdBox.Controls.AddRange(new Control[] { l1, _pwd, l2, _pwd2, hint });
 
             var bottom = new Panel { Dock = DockStyle.Bottom, Height = 76 };
-            var btnSave = new Button { Text = "保存设置(需10秒)", Left = 430, Top = 18, Width = 150, Height = 34 };
+            var btnSave = new Button { Text = "保存设置(需10秒)", Left = 530, Top = 18, Width = 150, Height = 34 };
             btnSave.Click += (s, e) => Save();
-            var btnExport = new Button { Text = "导出配置", Left = 590, Top = 18, Width = 90, Height = 34 };
+            var btnExport = new Button { Text = "导出配置", Left = 690, Top = 18, Width = 90, Height = 34 };
             btnExport.Click += (s, e) => Export();
-            var btnImport = new Button { Text = "导入配置", Left = 688, Top = 18, Width = 90, Height = 34 };
+            var btnImport = new Button { Text = "导入配置", Left = 788, Top = 18, Width = 90, Height = 34 };
             btnImport.Click += (s, e) => Import();
-            var btnReset = new Button { Text = "恢复默认", Left = 786, Top = 18, Width = 90, Height = 34 };
+            var btnReset = new Button { Text = "恢复默认", Left = 886, Top = 18, Width = 90, Height = 34 };
             btnReset.Click += (s, e) => ResetDefaults();
-            var btnCancel = new Button { Text = "取消", Left = 340, Top = 18, Width = 80, Height = 34, DialogResult = DialogResult.Cancel };
+            var btnCancel = new Button { Text = "取消", Left = 440, Top = 18, Width = 80, Height = 34, DialogResult = DialogResult.Cancel };
             var lblFooter = new Label
             {
-                Text = "注：所有开关都由你决定；标【危险】的项会让一节普通的网线松动变成关机/重启，默认关闭。\r\n" +
-                       "改完保存后 10 秒内生效；设置前建议先在硬盘保护系统中保存进度。",
-                Left = 14,
-                Top = 14,
-                Width = 320,
-                Height = 50,
-                ForeColor = Color.DimGray
+                Left = 14, Top = 14, Width = 420, Height = 50, ForeColor = Color.DimGray,
+                Text = "左侧选分组；顶部可搜索、可只看已改动（与出厂默认值比较）。\r\n标红的是【危险】项，改完保存后 10 秒内生效。"
             };
             bottom.Controls.AddRange(new Control[] { btnSave, btnExport, btnImport, btnReset, btnCancel, lblFooter });
 
             Controls.Add(_panel);
             Controls.Add(bottom);
+            Controls.Add(pwdBox);
             CancelButton = btnCancel;
         }
 
-        // ------------------------------------------------------------------ 渲染
-        private GroupBox BuildSection(string title, List<FieldSpec> fields)
+        // ------------------------------------------------------------------ 截图（文档/人工核对用）
+        /// <summary>把 14 个分组面板逐个渲染成 PNG（不修改配置）。</summary>
+        public List<string> RenderScreenshots(string outDir)
         {
-            var box = new GroupBox
+            var saved = new List<string>();
+            Directory.CreateDirectory(outDir);
+            // 截图时临时取消 MinimumSize：否则矮的内容会被夹到 560 高、窄的会被夹到 900 宽，
+            // 结果每张图都一样大、右边内容被裁掉。
+            Size savedMin = MinimumSize;
+            MinimumSize = Size.Empty;
+            try
             {
-                Text = title,
-                Width = 855,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                Margin = new Padding(3, 3, 3, 10),
-                Padding = new Padding(10)
-            };
-            var table = new TableLayoutPanel
-            {
-                ColumnCount = 2,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                Dock = DockStyle.Top
-            };
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 470));
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 340));
-
-            foreach (FieldSpec f in fields)
-            {
-                Control control = BuildControl(f);
-                var label = new Label
+                for (int i = 0; i < _panel.Sections.Count; i++)
                 {
-                    Text = f.Label + (string.IsNullOrEmpty(f.Hint) ? "" : "\r\n" + f.Hint),
-                    AutoSize = true,
-                    MaximumSize = new Size(465, 0),
-                    ForeColor = f.Dangerous ? Color.Firebrick : Color.Black
-                };
-                table.Controls.Add(label, 0, table.RowCount);
-                table.Controls.Add(control, 1, table.RowCount);
-                table.RowCount++;
-                _bindings.Add(new KeyValuePair<FieldSpec, Control>(f, control));
+                    _panel.SelectSection(i);
+                    Application.DoEvents();
+                    Size need = _panel.PrepareForCapture();
+                    ClientSize = new Size(need.Width + 6, need.Height + 74 + 76 + 6);
+                    PerformLayout();
+                    Application.DoEvents();
+                    string path = Path.Combine(outDir,
+                        string.Format("settings-{0:00}-{1}.png", i + 1, SafeName(_panel.Sections[i])));
+                    if (UiCapture.Save(this, path) != null) saved.Add(path);
+                    _panel.RestoreAfterCapture();
+                }
             }
-            box.Controls.Add(table);
-            return box;
-        }
-
-        private Control BuildControl(FieldSpec f)
-        {
-            object current = f.Get(_config);
-            switch (f.Kind)
+            finally
             {
-                case FieldKind.Bool:
-                    return new CheckBox { Checked = current is bool && (bool)current, Text = "开关", AutoSize = true };
-                case FieldKind.Choice:
-                {
-                    var combo = new ComboBox { Width = 320, DropDownStyle = ComboBoxStyle.DropDownList };
-                    combo.Items.AddRange(f.Choices.Cast<object>().ToArray());
-                    string now = Convert.ToString(current);
-                    int idx = Array.IndexOf(f.Values, now);
-                    combo.SelectedIndex = idx >= 0 ? idx : 0;
-                    return combo;
-                }
-                case FieldKind.Number:
-                {
-                    var num = new NumericUpDown { Width = 120, Minimum = f.Min, Maximum = f.Max };
-                    decimal v;
-                    num.Value = decimal.TryParse(Convert.ToString(current), out v)
-                        ? Math.Min(Math.Max(v, f.Min), f.Max) : f.Min;
-                    return num;
-                }
-                case FieldKind.List:
-                {
-                    var memo = new TextBox { Multiline = true, Width = 330, Height = Math.Max(60, 18 * Math.Min(6, Lines(current).Length + 1)), ScrollBars = ScrollBars.Vertical };
-                    memo.Text = string.Join("\r\n", Lines(current));
-                    return memo;
-                }
-                case FieldKind.Path:
-                {
-                    var wrap = new Panel { Width = 330, Height = 30 };
-                    var text = new TextBox { Width = 240, Text = Convert.ToString(current) ?? "" };
-                    var browse = new Button { Text = "浏览…", Left = 246, Width = 80, Height = 24 };
-                    browse.Click += (s, e) =>
-                    {
-                        using (var dlg = new OpenFileDialog { Filter = f.Filter ?? "所有文件|*.*" })
-                        {
-                            if (dlg.ShowDialog() == DialogResult.OK) text.Text = dlg.FileName;
-                        }
-                    };
-                    wrap.Controls.Add(text);
-                    wrap.Controls.Add(browse);
-                    return wrap;
-                }
-                default:
-                    return new TextBox { Width = 320, Text = Convert.ToString(current) ?? "" };
+                MinimumSize = savedMin;
             }
+            return saved;
         }
 
-        private static string[] Lines(object value)
+        private static string SafeName(string s)
         {
-            var list = value as IEnumerable<string>;
-            return list == null ? new string[0] : list.ToArray();
-        }
-
-        private GroupBox BuildPasswordSection()
-        {
-            var box = new GroupBox
+            var sb = new System.Text.StringBuilder();
+            foreach (char c in s ?? "")
             {
-                Text = "14、密码（6 位及以上字母或数字；留空 = 不修改）",
-                Width = 855,
-                Height = 90,
-                Margin = new Padding(3, 3, 3, 10)
-            };
-            var lbl = new Label { Text = "密码：                      再次输入：", Left = 12, Top = 12, Width = 420 };
-            var pwd = new TextBox { Left = 12, Top = 34, Width = 200, UseSystemPasswordChar = true };
-            var pwd2 = new TextBox { Left = 224, Top = 34, Width = 200, UseSystemPasswordChar = true };
-            var hint = new Label
-            {
-                Text = "（口令用 PBKDF2-SHA256 保存；这个密码也是「暂停/退出/卸载」的密码）",
-                Left = 12,
-                Top = 60,
-                Width = 700,
-                ForeColor = Color.DimGray
-            };
-            box.Controls.AddRange(new Control[] { lbl, pwd, pwd2, hint });
-            _pwdText = pwd;
-            _pwdText2 = pwd2;
-            return box;
+                if (char.IsLetterOrDigit(c)) sb.Append(c);
+                else if (c == '、' || c == ' ') sb.Append('-');
+            }
+            return sb.Length > 20 ? sb.ToString(0, 20) : sb.ToString();
         }
-
-        private TextBox _pwdText;
-        private TextBox _pwdText2;
 
         // ------------------------------------------------------------------ 保存 / 导入导出
-        private void Collect()
-        {
-            foreach (var kv in _bindings)
-            {
-                FieldSpec f = kv.Key;
-                Control c = kv.Value;
-                switch (f.Kind)
-                {
-                    case FieldKind.Bool:
-                        f.Set(_config, ((CheckBox)c).Checked);
-                        break;
-                    case FieldKind.Choice:
-                    {
-                        int idx = ((ComboBox)c).SelectedIndex;
-                        f.Set(_config, f.Values[Math.Max(0, idx)]);
-                        break;
-                    }
-                    case FieldKind.Number:
-                        f.Set(_config, (int)((NumericUpDown)c).Value);
-                        break;
-                    case FieldKind.List:
-                        f.Set(_config, ((TextBox)c).Lines
-                            .Select(x => x.Trim())
-                            .Where(x => x.Length > 0)
-                            .ToList());
-                        break;
-                    case FieldKind.Path:
-                        f.Set(_config, c.Controls.OfType<TextBox>().First().Text.Trim());
-                        break;
-                    default:
-                        f.Set(_config, ((TextBox)c).Text.Trim());
-                        break;
-                }
-            }
-        }
-
-        private void RefreshControls()
-        {
-            foreach (var kv in _bindings)
-            {
-                FieldSpec f = kv.Key;
-                Control c = kv.Value;
-                object v = f.Get(_config);
-                switch (f.Kind)
-                {
-                    case FieldKind.Bool: ((CheckBox)c).Checked = v is bool && (bool)v; break;
-                    case FieldKind.Choice:
-                        int idx = Array.IndexOf(f.Values, Convert.ToString(v));
-                        ((ComboBox)c).SelectedIndex = idx >= 0 ? idx : 0;
-                        break;
-                    case FieldKind.Number:
-                        decimal d;
-                        ((NumericUpDown)c).Value = decimal.TryParse(Convert.ToString(v), out d)
-                            ? Math.Min(Math.Max(d, f.Min), f.Max) : f.Min;
-                        break;
-                    case FieldKind.List: ((TextBox)c).Text = string.Join("\r\n", Lines(v)); break;
-                    case FieldKind.Path: c.Controls.OfType<TextBox>().First().Text = Convert.ToString(v) ?? ""; break;
-                    default: ((TextBox)c).Text = Convert.ToString(v) ?? ""; break;
-                }
-            }
-            _pwdText.Clear();
-            _pwdText2.Clear();
-        }
-
         private void Save()
         {
-            if (!string.IsNullOrEmpty(_pwdText.Text) || !string.IsNullOrEmpty(_pwdText2.Text))
+            if (!string.IsNullOrEmpty(_pwd.Text) || !string.IsNullOrEmpty(_pwd2.Text))
             {
-                if (_pwdText.Text != _pwdText2.Text)
+                if (_pwd.Text != _pwd2.Text)
                 {
-                    MessageBox.Show("两次输入的密码不一致，请重新输入！", "LabGuard");
+                    MessageBox.Show("两次输入的密码不一致，请重新输入！", LabGuard.Core.AppInfo.ProductName);
                     return;
                 }
-                string error = PasswordHasher.Validate(_pwdText.Text);
+                string error = PasswordHasher.Validate(_pwd.Text);
                 if (error != null)
                 {
-                    MessageBox.Show(error, "LabGuard");
+                    MessageBox.Show(error, LabGuard.Core.AppInfo.ProductName);
                     return;
                 }
-                _config.PasswordHash = PasswordHasher.Create(_pwdText.Text);
+                _config.PasswordHash = PasswordHasher.Create(_pwd.Text);
             }
             if (string.IsNullOrEmpty(_config.PasswordHash))
             {
-                MessageBox.Show("请设置 6 位及以上的字母或数字作为小助手密码！", "LabGuard");
+                MessageBox.Show("请设置 6 位及以上的字母或数字作为口令！", LabGuard.Core.AppInfo.ProductName);
                 return;
             }
 
-            Collect();
+            _panel.Collect(_config);
             if (_config.Network.EnforceDns && _config.Network.DnsServers.Count == 0)
             {
-                MessageBox.Show("勾选了「锁定学生机 DNS」，但没有填 DNS 服务器地址。\r\n请填教师机 IP 或取消勾选。",
-                    "LabGuard");
+                MessageBox.Show("勾选了「锁定学生机 DNS」，但没有填 DNS 服务器地址。\r\n请填服务器 IP 或取消勾选。",
+                    LabGuard.Core.AppInfo.ProductName);
                 return;
             }
 
@@ -302,20 +153,20 @@ namespace LabGuard.Settings
             {
                 ConfigStore.Save(_config);
                 WatchdogGuard.MarkPaused(false);
+                _pwd.Clear();
+                _pwd2.Clear();
+                _panel.Refresh(_config);
             }
             catch (Exception ex)
             {
-                MessageBox.Show("保存失败：" + ex.Message + "\r\n请右击设置程序，选择【以管理员身份运行】后重试。",
-                    "LabGuard", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("保存失败：" + ex.Message + "\r\n请右键设置程序，选择【以管理员身份运行】后重试。",
+                    LabGuard.Core.AppInfo.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
             RestartEngineSide();
-            MessageBox.Show("设置已保存，监控将在 10 秒内重新生效。\r\n" +
-                            "（记得在硬盘保护系统中创建进度 / 保存系统）",
-                "LabGuard", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            DialogResult = DialogResult.OK;
-            Close();
+            MessageBox.Show("设置已保存，监控将在 10 秒内重新生效。\r\n（记得在硬盘保护系统中创建进度 / 保存系统）",
+                LabGuard.Core.AppInfo.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private static void RestartEngineSide()
@@ -339,7 +190,7 @@ namespace LabGuard.Settings
         {
             try
             {
-                Collect();
+                _panel.Collect(_config);
                 using (var dlg = new SaveFileDialog
                 {
                     Filter = "配置文件|*.json",
@@ -347,15 +198,14 @@ namespace LabGuard.Settings
                 })
                 {
                     if (dlg.ShowDialog() != DialogResult.OK) return;
-                    string json = ConfigStore.Serialize(_config);
-                    File.WriteAllText(dlg.FileName, json, new System.Text.UTF8Encoding(false));
+                    File.WriteAllText(dlg.FileName, ConfigStore.Serialize(_config), new System.Text.UTF8Encoding(false));
                     MessageBox.Show("已导出（含口令散列，可直接拷到其它学生机导入）：\r\n" + dlg.FileName,
-                        "LabGuard");
+                        LabGuard.Core.AppInfo.ProductName);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("导出失败：" + ex.Message, "LabGuard");
+                MessageBox.Show("导出失败：" + ex.Message, LabGuard.Core.AppInfo.ProductName);
             }
         }
 
@@ -367,8 +217,7 @@ namespace LabGuard.Settings
                 {
                     if (dlg.ShowDialog() != DialogResult.OK) return;
                     GuardConfig imported = ConfigStore.ImportFrom(dlg.FileName);
-                    // 覆盖叶子字段：用反射整体复制（保持对象引用不变，界面绑定仍然有效）
-                    string keepPassword = _config.PasswordHash == null ? "" : _config.PasswordHash;
+                    string keepPassword = _config.PasswordHash ?? "";
                     _config.Enabled = imported.Enabled;
                     _config.ResumeAfterMinutes = imported.ResumeAfterMinutes;
                     _config.StartDelaySeconds = imported.StartDelaySeconds;
@@ -385,20 +234,20 @@ namespace LabGuard.Settings
                     _config.Site = imported.Site;
                     _config.RegistryAcl = imported.RegistryAcl;
                     _config.Watchdog = imported.Watchdog;
-                    RefreshControls();
-                    MessageBox.Show("已导入，请检查各分组后点【保存设置】。", "LabGuard");
+                    _panel.Refresh(_config);
+                    MessageBox.Show("已导入，请检查各分组后点【保存设置】。", LabGuard.Core.AppInfo.ProductName);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("导入失败：" + ex.Message, "LabGuard");
+                MessageBox.Show("导入失败：" + ex.Message, LabGuard.Core.AppInfo.ProductName);
             }
         }
 
         private void ResetDefaults()
         {
-            if (MessageBox.Show("把所有开关恢复为程序默认值？\r\n（密码不会被清除）",
-                    "LabGuard", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            if (MessageBox.Show("把所有开关恢复为程序默认值？\r\n（口令不会被清除）", LabGuard.Core.AppInfo.ProductName,
+                    MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             string pwd = _config.PasswordHash;
             var fresh = new GuardConfig { PasswordHash = pwd };
             _config.Enabled = fresh.Enabled;
@@ -416,7 +265,7 @@ namespace LabGuard.Settings
             _config.Site = fresh.Site;
             _config.RegistryAcl = fresh.RegistryAcl;
             _config.Watchdog = fresh.Watchdog;
-            RefreshControls();
+            _panel.Refresh(_config);
         }
     }
 }

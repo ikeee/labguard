@@ -40,6 +40,29 @@ namespace LabGuard.Installer
         };
         private bool _installed;
 
+        /// <summary>截图用：依次显示每个向导页面并渲染成 PNG（不执行安装）。</summary>
+        public System.Collections.Generic.List<string> RenderScreenshots(string outDir)
+        {
+            var saved = new System.Collections.Generic.List<string>();
+            System.IO.Directory.CreateDirectory(outDir);
+            for (int i = 0; i < _tabs.TabPages.Count; i++)
+            {
+                _agree.Checked = true;              // 让"下一步"断言不挡路（仅内存中）
+                Console.WriteLine("[shot] 切到第 " + (i + 1) + " 页：" + _tabs.TabPages[i].Text);
+                _tabs.SelectedIndex = i;
+                Application.DoEvents();
+                Console.WriteLine("[shot] 页面已就绪，开始 DrawToBitmap");
+                string name = string.Format("wizard-{0}-{1}.png", i + 1,
+                    (_tabs.TabPages[i].Text ?? "").Replace(" ", "-").Replace(".", "-"));
+                string path = System.IO.Path.Combine(outDir, name);
+                string ok = LabGuard.Core.UI.UiCapture.Save(this, path);
+                Console.WriteLine("[shot] " + (ok ?? "失败") );
+                if (ok != null) saved.Add(path);
+                Application.DoEvents();
+            }
+            return saved;
+        }
+
         public InstallerForm()
         {
             Text = LabGuard.Core.AppInfo.ProductName + " v" + LabGuard.Core.AppInfo.Version + " · 一键安装向导";

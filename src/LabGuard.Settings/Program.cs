@@ -15,6 +15,52 @@ namespace LabGuard.Settings
         {
             Log.MinLevel = LogLevel.Info;
             GuardConfig config = ConfigStore.Load();
+            // --screenshot <目录>：把 14 个设置面板渲染成 PNG（供文档/人工核对），不修改配置
+            int shotIndex = Array.IndexOf(args ?? new string[0], "--screenshot");
+            if (shotIndex >= 0)
+            {
+                string dir = args.Length > shotIndex + 1 ? args[shotIndex + 1]
+                    : System.IO.Path.Combine(System.IO.Path.GetTempPath(), "labguard-ui");
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                if (string.IsNullOrEmpty(config.PasswordHash)) config.PasswordHash = PasswordHasher.Create("a1b2c3");
+                using (var form = new SettingsForm(config))
+                {
+                    LabGuard.Core.UI.UiCapture.ShowOffScreen(form);
+                    var files = form.RenderScreenshots(dir);
+                    form.Hide();
+                    foreach (string f in files) Console.WriteLine(f);
+                    Console.WriteLine("共 " + files.Count + " 张，目录：" + dir);
+                }
+                return;
+            }
+
+            // --screenshot-mask <文件>：渲染「断网遮罩」界面
+            int maskIndex = Array.IndexOf(args ?? new string[0], "--screenshot-mask");
+            if (maskIndex >= 0)
+            {
+                string file = args.Length > maskIndex + 1 ? args[maskIndex + 1]
+                    : System.IO.Path.Combine(System.IO.Path.GetTempPath(), "labguard-mask.png");
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                using (var mask = new LabGuard.Core.UI.DisconnectMaskForm())
+                {
+                    LabGuard.Core.UI.UiCapture.ShowOffScreen(mask);
+                    mask.ShowMask("机位 160161", "网络已断开", "请插回网线或启用网络连接",
+                        string.IsNullOrEmpty(config.PasswordHash) ? PasswordHasher.Create("a1b2c3") : config.PasswordHash,
+                        true, true,
+                        () => "已断开 0 分 42 秒 · 插回网线后 10 秒内自动恢复",
+                        () => false, () => { });
+                    Application.DoEvents();
+                    System.Threading.Thread.Sleep(600);
+                    Application.DoEvents();
+                    string ok = LabGuard.Core.UI.UiCapture.Save(mask, file);
+                    mask.AutoClose("截图完成");
+                    Console.WriteLine(ok ?? "截图失败");
+                }
+                return;
+            }
+
 
             // 界面自检：不显示窗口，只构建一次并统计控件，验证"每个配置项都渲染出控件"
             if (Array.IndexOf(args ?? new string[0], "--selftest-ui") >= 0)

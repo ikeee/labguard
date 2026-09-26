@@ -26,6 +26,67 @@ namespace LabGuard.Core.UI
         private readonly GuardConfig _defaults = new GuardConfig();
         private GuardConfig _config;
 
+        /// <summary>当前分组的标题列表（截图/自检用）。</summary>
+        public IReadOnlyList<string> Sections => _sections;
+
+        private DockStyle _savedSelfDock = DockStyle.Fill;
+        private DockStyle _savedHostDock = DockStyle.Fill;
+        private bool _savedBoxAutoSize = true;
+
+        /// <summary>截图时统一使用的分组宽度。</summary>
+        private const int CaptureBoxWidth = 900;
+
+        /// <summary>
+        /// 截图用：把面板按"当前分组的完整内容"撑开（Dock 会覆盖 Size，所以要临时取消 Dock）。
+        /// 返回撑开后整个面板需要的尺寸；用完调用 RestoreAfterCapture()。
+        /// </summary>
+        public Size PrepareForCapture()
+        {
+            if (_nav.SelectedIndex < 0 || _nav.SelectedIndex >= _sections.Count) return Size;
+            _savedSelfDock = Dock;
+            _savedHostDock = _host.Dock;
+            Dock = DockStyle.None;
+            _host.Dock = DockStyle.None;
+            _host.AutoScroll = false;
+
+            GroupBox box = _boxes[_sections[_nav.SelectedIndex]];
+            // AutoSize 会覆盖手动设的 Size（宽度缩回不可测量的小值、右侧被裁），截图时先关掉。
+            _savedBoxAutoSize = box.AutoSize;
+            box.AutoSize = false;
+            box.Dock = DockStyle.None;
+            box.Size = new Size(CaptureBoxWidth, 200);   // 先定宽度，让内部表格按这个宽度排版
+            box.PerformLayout();
+            Application.DoEvents();
+
+            int content = 0;
+            if (box.Controls.Count > 0) content = box.Controls[0].Height;
+            int height = Math.Max(content + box.Padding.Vertical + 28, 80);
+            box.Size = new Size(CaptureBoxWidth, height);
+            box.Location = new Point(_nav.Width, 40);
+            _host.Location = new Point(_nav.Width, 40);
+            _host.Size = box.Size;
+            Size = new Size(_nav.Width + box.Width + 8, 40 + box.Height + 8);
+            _nav.Height = Size.Height;
+            PerformLayout();
+            Application.DoEvents();
+            return Size;
+        }
+
+        /// <summary>截图后恢复原来的 Dock 布局。</summary>
+        public void RestoreAfterCapture()
+        {
+            if (_nav.SelectedIndex >= 0 && _nav.SelectedIndex < _sections.Count)
+            {
+                GroupBox box = _boxes[_sections[_nav.SelectedIndex]];
+                box.Dock = DockStyle.Top;
+                box.AutoSize = _savedBoxAutoSize;
+            }
+            _host.Dock = _savedHostDock;
+            _host.AutoScroll = true;
+            Dock = _savedSelfDock;
+            PerformLayout();
+        }
+
         public SettingsPanel()
         {
             var top = new Panel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(4, 6, 4, 0) };

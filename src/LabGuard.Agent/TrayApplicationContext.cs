@@ -19,6 +19,9 @@ namespace LabGuard.Agent
     {
         private readonly NotifyIcon _tray;
         private bool _headless;   // 无桌面/托盘可用时的降级运行（监控照常，只是没有托盘）
+
+        /// <summary>托盘不可用 → 无界面降级模式（供诊断/自检读取）。</summary>
+        public bool Headless { get { return _headless; } }
         private readonly GuardEngine _engine;
         private readonly LockScreenForm _lockScreen;
         private readonly DisconnectMaskForm _disconnectMask = new DisconnectMaskForm();
