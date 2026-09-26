@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 using LabGuard.Core.Config;
 using LabGuard.Core.Logging;
@@ -28,8 +29,20 @@ namespace LabGuard.Settings
                         System.Linq.Enumerable.Select(LabGuard.Core.Settings.SettingsCatalog.All(), f => f.Section)).Count;
                     Console.WriteLine("设置界面构建成功。");
                     Console.WriteLine("分组数：" + sections);
+                    Console.WriteLine("分组列表：" + string.Join(" | ", System.Linq.Enumerable.Select(System.Linq.Enumerable.Distinct(System.Linq.Enumerable.Select(LabGuard.Core.Settings.SettingsCatalog.All(), f => f.Section)), x => x)));
                     Console.WriteLine("配置项（开关）：" + fields);
                     Console.WriteLine("渲染控件统计：" + string.Join("，", counts));
+                    // 逐项列出"路径类"开关，确认「自动识别」按钮确实挂在课堂软件那一行
+                    using (var panel = new LabGuard.Core.UI.SettingsPanel())
+                    {
+                        panel.SelectSectionByName("电子教室");
+                        foreach (var f in LabGuard.Core.Settings.SettingsCatalog.All()
+                                     .Where(x => x.Kind == LabGuard.Core.Settings.FieldKind.Path))
+                        {
+                            Console.WriteLine("路径类开关：" + f.Path +
+                                "（该行控件数 =" + CountOfKind(panel, f.Path) + "）");
+                        }
+                    }
                     return;
                 }
             }
@@ -135,11 +148,13 @@ namespace LabGuard.Settings
                 Echo("任务栏/Win键/任务管理器 = " + config.Shell.HideTaskView + " / " +
                                   config.Shell.BlockWindowsKey + " / " + config.Shell.DisableTaskManager);
                 Echo("安全模式限制          = " + config.SafeMode.BlockNetworkSafeMode);
-                Echo("壁纸 / 机器编号       = " + config.Wallpaper.Enabled + " / " + config.Wallpaper.ShowMachineNumber +
-                                  "（后 " + config.Wallpaper.MachineNumberChars + " 位）");
+            Echo("机位编号（不改系统壁纸） = " + config.Site.ShowMachineNumber +
+                 "（后 " + config.Site.MachineNumberChars + " 位）");
+            Echo("隐藏安装目录          = " + config.Watchdog.HideInstallDir);
             Echo("互相守护 / 服务异常重启电脑 = " + config.Watchdog.Enabled + " / " + config.Watchdog.RebootOnServiceFailure);
             Echo("文件自愈 / 心跳上报 = " + config.Watchdog.RestoreMissingFiles + " / " +
                  (string.IsNullOrWhiteSpace(config.Watchdog.ReportUrl) ? "未配置" : config.Watchdog.ReportUrl));
+            Echo("隐藏安装目录 = " + config.Watchdog.HideInstallDir);
                 FlushReport("deploy-show-config");
                 return;
             }
@@ -161,6 +176,22 @@ namespace LabGuard.Settings
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new SettingsForm(config));
+        }
+
+        private static int CountOfKind(Control root, string tag)
+        {
+            foreach (Control c in Walk(root))
+            {
+                if (Equals(c.Tag, tag)) return c.Controls.Count;
+            }
+            return -1;
+        }
+
+        private static System.Collections.Generic.IEnumerable<Control> Walk(Control root)
+        {
+            yield return root;
+            foreach (Control c in root.Controls)
+                foreach (Control x in Walk(c)) yield return x;
         }
 
         private static void CountControls(Control control, System.Collections.Generic.Dictionary<string, int> counts)
@@ -227,7 +258,7 @@ namespace LabGuard.Settings
             c.Shell.HideTaskView = true;
             c.Shell.DisableTaskManager = true;
             c.Shell.DisableRegistryTools = true;
-            c.Wallpaper.ShowMachineNumber = true;
+            c.Site.ShowMachineNumber = true;
             c.Watchdog.Enabled = true;
             c.Watchdog.RebootOnServiceFailure = false;   // 默认不重启电脑（只重启服务）
 

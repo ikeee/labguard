@@ -382,7 +382,7 @@ namespace LabGuard.Settings
                     _config.Browser = imported.Browser;
                     _config.Shell = imported.Shell;
                     _config.SafeMode = imported.SafeMode;
-                    _config.Wallpaper = imported.Wallpaper;
+                    _config.Site = imported.Site;
                     _config.RegistryAcl = imported.RegistryAcl;
                     _config.Watchdog = imported.Watchdog;
                     RefreshControls();
@@ -413,7 +413,7 @@ namespace LabGuard.Settings
             _config.Browser = fresh.Browser;
             _config.Shell = fresh.Shell;
             _config.SafeMode = fresh.SafeMode;
-            _config.Wallpaper = fresh.Wallpaper;
+            _config.Site = fresh.Site;
             _config.RegistryAcl = fresh.RegistryAcl;
             _config.Watchdog = fresh.Watchdog;
             RefreshControls();

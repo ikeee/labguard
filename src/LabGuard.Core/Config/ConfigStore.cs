@@ -203,7 +203,7 @@ namespace LabGuard.Core.Config
             if (c.Browser == null) c.Browser = new BrowserSettings();
             if (c.Shell == null) c.Shell = new ShellSettings();
             if (c.SafeMode == null) c.SafeMode = new SafeModeSettings();
-            if (c.Wallpaper == null) c.Wallpaper = new WallpaperSettings();
+            if (c.Site == null) c.Site = new SiteSettings();
             if (c.RegistryAcl == null) c.RegistryAcl = new RegistryAclSettings();
             if (c.Watchdog == null) c.Watchdog = new WatchdogSettings();
         }

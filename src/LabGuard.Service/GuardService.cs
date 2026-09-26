@@ -70,11 +70,13 @@ namespace LabGuard.Service
             }
             try
             {
-                // 服务在 SYSTEM 会话里，用计划任务方式把代理拉进当前登录用户会话
+                // 服务在 SYSTEM 会话里：只能用"计划任务 + /i"把代理拉进当前登录用户会话。
+                // 不要用 cmd start 直接起（会落在会话 0，没有桌面 → 小助手建不了托盘而闪退）。
                 int rc = Core.Interop.SystemActions.Run("schtasks.exe", "/run /tn \"LabGuard\\Agent\" /i");
                 if (rc != 0)
                 {
-                    Core.Interop.SystemActions.Run("cmd.exe", "/c start \"\" \"" + path + "\"");
+                    Log.Warn("拉起小助手失败（schtasks rc=" + rc + "）：请确认计划任务 LabGuard\\Agent 存在且已启用。");
+                    return;
                 }
                 Log.Warn("已尝试重新启动小助手代理（schtasks rc=" + rc + "）");
             }

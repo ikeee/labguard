@@ -71,7 +71,7 @@ namespace LabGuard.Core
                 _guards.Add(new ProcessBlockGuard());
                 _guards.Add(new ShellPolicyGuard());
                 _guards.Add(new KeyboardHookGuard());
-                _guards.Add(new WallpaperGuard());
+                _guards.Add(new HidingGuard());
                 _guards.Add(new WatchdogGuard());
             }
 
@@ -138,7 +138,7 @@ namespace LabGuard.Core
             var all = new List<IGuard>
             {
                 new WatchdogGuard(), new FileCreationGuard(), new BrowserPolicyGuard(), new SafeModeGuard(),
-                new RegistryAclGuard(), new UsbGuard(), new HostsGuard(), new WallpaperGuard(),
+                new RegistryAclGuard(), new UsbGuard(), new HostsGuard(), new HidingGuard(),
                 new KeyboardHookGuard(), new ShellPolicyGuard(), new ProcessBlockGuard(), new ClassroomGuard(),
                 new NetworkGuard()
             };

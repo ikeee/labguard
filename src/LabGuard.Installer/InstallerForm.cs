@@ -19,6 +19,7 @@ namespace LabGuard.Installer
         private readonly Label _status = new Label { AutoSize = true, ForeColor = Color.DimGray };
 
         private readonly TextBox _dir = new TextBox { Width = 520 };
+        private readonly TextBox _classroom = new TextBox { Width = 470 };
         private readonly RadioButton _dirDefault = new RadioButton { Text = "推荐：系统程序目录（普通用户不可写，便于统一维护）" };
         private readonly RadioButton _dirCustom = new RadioButton { Text = "自定义：" };
         private readonly TextBox _pwd = new TextBox { Width = 220, UseSystemPasswordChar = true };
@@ -53,6 +54,7 @@ namespace LabGuard.Installer
             _tabs.Appearance = TabAppearance.Normal;
             _tabs.TabPages.Add(TabWelcome());
             _tabs.TabPages.Add(TabLocation());
+            _tabs.TabPages.Add(TabClassroom());
             _tabs.TabPages.Add(TabPassword());
             _tabs.TabPages.Add(TabOptions());
             _tabs.TabPages.Add(TabInstall());
@@ -148,9 +150,48 @@ namespace LabGuard.Installer
             return page;
         }
 
+        private TabPage TabClassroom()
+        {
+            var page = new TabPage("3. 课堂软件") { Padding = new Padding(20) };
+            var title = new Label
+            {
+                Left = 20, Top = 20, Width = 780, Height = 46,
+                Text = "本程序要保护的“课堂软件”（电子教室）学生端程序。\n" +
+                       "点【自动识别】会查找：极域 / 红蜘蛛 / 锐捷云课堂 / 联想云课堂 等；识别不到就请手动填写或浏览选择。"
+            };
+            var l1 = new Label { Text = "学生端程序：", Left = 20, Top = 82, Width = 100 };
+            _classroom.Left = 122; _classroom.Top = 78;
+            var detect = new Button { Text = "自动识别…", Left = 600, Top = 76, Width = 110, Height = 28 };
+            detect.Click += (s, e) =>
+            {
+                string picked = LabGuard.Core.UI.ClassroomPickDialog.Pick(this, _classroom.Text);
+                if (!string.IsNullOrEmpty(picked)) _classroom.Text = picked;
+            };
+            var browse = new Button { Text = "浏览…", Left = 716, Top = 76, Width = 84, Height = 28 };
+            browse.Click += (s, e) =>
+            {
+                using (var dlg = new OpenFileDialog { Filter = "学生端程序|*.exe", Title = "选择课堂软件学生端程序" })
+                {
+                    if (dlg.ShowDialog() == DialogResult.OK) _classroom.Text = dlg.FileName;
+                }
+            };
+            var hint = new Label
+            {
+                Left = 20, Top = 126, Width = 800, Height = 190, ForeColor = Color.DimGray,
+                Text = "· 常见路径：极域 C:\\Program Files (x86)\\TopDomain\\e-Learning Class\\Student\\StudentMain.exe\n" +
+                       "    红蜘蛛 C:\\Program Files (x86)\\3000soft\\Red Spider\\REDAgent.exe\n" +
+                       "    锐捷云课堂 ...\\ClassManager\\ClassMangerApp.exe\n" +
+                       "· 留空也可以：程序会在运行时自动探测（按进程名 / 常见路径 / 卸载记录）。\n" +
+                       "· 这一项只影响“进程被挂起自动恢复 / 被结束自动拉起”等保护动作，不影响其它功能。\n" +
+                       "· 识别不准？没关系：装好后在【设置】→ 第 1 组里随时可以改。"
+            };
+            page.Controls.AddRange(new Control[] { title, l1, _classroom, detect, browse, hint });
+            return page;
+        }
+
         private TabPage TabPassword()
         {
-            var page = new TabPage("3. 设置密码") { Padding = new Padding(20) };
+            var page = new TabPage("4. 设置密码") { Padding = new Padding(20) };
             var l1 = new Label { Text = "小助手密码：", Left = 20, Top = 30, Width = 110 };
             _pwd.Left = 140; _pwd.Top = 28;
             var l2 = new Label { Text = "再次输入：", Left = 20, Top = 70, Width = 110 };
@@ -170,7 +211,7 @@ namespace LabGuard.Installer
 
         private TabPage TabOptions()
         {
-            var page = new TabPage("4. 功能开关（90+ 项）") { Padding = new Padding(10) };
+            var page = new TabPage("5. 功能开关（92 项，可逐项开关）") { Padding = new Padding(10) };
             var top = new Panel { Dock = DockStyle.Top, Height = 76 };
             var lbl = new Label { Text = "先套用一个预设，再按需逐项调整：", Left = 6, Top = 8, Width = 330 };
             _presetBox.Left = 6; _presetBox.Top = 30;
@@ -204,7 +245,7 @@ namespace LabGuard.Installer
 
         private TabPage TabInstall()
         {
-            var page = new TabPage("5. 安装") { Padding = new Padding(14) };
+            var page = new TabPage("6. 安装") { Padding = new Padding(14) };
             var lbl = new Label
             {
                 Dock = DockStyle.Top, Height = 44, Font = new Font("微软雅黑", 10F),
@@ -301,12 +342,13 @@ namespace LabGuard.Installer
 
         private void DoInstall()
         {
-            if (!ValidateStep(0) || !ValidateStep(2)) { _tabs.SelectedIndex = _agree.Checked ? 2 : 0; return; }
+            if (!ValidateStep(0) || !ValidateStep(3)) { _tabs.SelectedIndex = _agree.Checked ? 3 : 0; return; }
             string dir = _dirCustom.Checked ? _dir.Text.Trim() : InstallEngine.DefaultInstallDir();
             if (string.IsNullOrEmpty(dir)) { MessageBox.Show("请填写安装目录。"); return; }
 
             var config = new GuardConfig();
             _options.Collect(config);
+            config.Classroom.MainExecutable = _classroom.Text.Trim();
             config.Enabled = _startNow.Checked && config.Enabled;
             _progress.Clear();
             _btnNext.Enabled = false;

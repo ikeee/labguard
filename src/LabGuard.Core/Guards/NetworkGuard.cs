@@ -168,14 +168,15 @@ namespace LabGuard.Core.Guards
                 Log.Warn("断网遮罩需要界面进程（服务侧无法显示），已跳过");
                 return;
             }
-            int chars = Math.Max(1, Context.Config.Wallpaper.MachineNumberChars);
+            int chars = Math.Max(1, Context.Config.Site.MachineNumberChars);
             string name = Environment.MachineName;
             string number = name.Length <= chars ? name : name.Substring(name.Length - chars);
             bool randomWallpaper = !string.Equals(Context.Config.Network.DisconnectMaskBackground,
                 "Plain", StringComparison.OrdinalIgnoreCase);
 
+            string machineNumber = Context.Config.Site.ShowMachineNumber ? ("机位 " + number) : "本机";
             Context.Alert.ShowDisconnectMask(
-                "机位 " + number,
+                machineNumber,
                 "网络已断开",
                 "请插回网线或启用网络连接",
                 Context.Config.PasswordHash,

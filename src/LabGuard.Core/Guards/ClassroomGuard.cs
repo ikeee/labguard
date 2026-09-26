@@ -114,11 +114,25 @@ namespace LabGuard.Core.Guards
             {
                 if (SystemActions.ProcessExists(name)) return name;
             }
+            // 自动识别（进程 → 常见路径 → 卸载记录 → 注册表）
+            string reason;
+            var best = NicRoles_Detect(out reason);
+            if (best != null)
+            {
+                Log.Info("自动识别课堂软件：" + reason);
+                return Path.GetFileName(best);
+            }
             foreach (var hint in DefaultBlocklists.ClassroomHints)
             {
                 if (File.Exists(hint.Value)) return hint.Key;
             }
             return null;
+        }
+
+        private static string NicRoles_Detect(out string reason)
+        {
+            var best = Core.Interop.ClassroomDetector.DetectBest(out reason);
+            return best?.Path;
         }
 
         private ViolationAction HostAction()

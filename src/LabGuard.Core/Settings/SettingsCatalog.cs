@@ -285,19 +285,13 @@ namespace LabGuard.Core.Settings
                 "bcdedit /set {bootmgr} displaybootmenu no", c => c.SafeMode.HideBootMenu,
                 (c, v) => c.SafeMode.HideBootMenu = (bool)v));
 
-            // ============================================================ 11 壁纸
-            list.Add(Bool("11、桌面壁纸与机器编号", "Wallpaper.Enabled", "启用统一壁纸", null,
-                c => c.Wallpaper.Enabled, (c, v) => c.Wallpaper.Enabled = (bool)v));
-            list.Add(Path("11、桌面壁纸与机器编号", "Wallpaper.Image", "壁纸图片（留空 = 用安装目录 wallpaper 里的）",
-                null, "图片文件|*.bmp;*.jpg;*.jpeg;*.png", c => c.Wallpaper.Image,
-                (c, v) => c.Wallpaper.Image = (string)v));
-            list.Add(Bool("11、桌面壁纸与机器编号", "Wallpaper.ShowMachineNumber", "右上角显示机器编号", null,
-                c => c.Wallpaper.ShowMachineNumber, (c, v) => c.Wallpaper.ShowMachineNumber = (bool)v));
-            list.Add(Number("11、桌面壁纸与机器编号", "Wallpaper.MachineNumberChars", "编号取计算机名后几位",
-                "默认 6 位（行为）", 1, 32, c => c.Wallpaper.MachineNumberChars,
-                (c, v) => c.Wallpaper.MachineNumberChars = (int)v));
-            list.Add(Bool("11、桌面壁纸与机器编号", "Wallpaper.GuardWallpaper", "壁纸被改时自动恢复", null,
-                c => c.Wallpaper.GuardWallpaper, (c, v) => c.Wallpaper.GuardWallpaper = (bool)v));
+            // ============================================================ 11 机位标识（不改系统壁纸）
+            list.Add(Bool("11、机位标识（不修改系统壁纸）", "Site.ShowMachineNumber", "断网遮罩上显示机器编号",
+                "只影响程序自己的提示界面；本程序不会替换学生机的系统壁纸",
+                c => c.Site.ShowMachineNumber, (c, v) => c.Site.ShowMachineNumber = (bool)v));
+            list.Add(Number("11、机位标识（不修改系统壁纸）", "Site.MachineNumberChars", "机器编号取计算机名后几位",
+                "默认 6 位", 1, 32, c => c.Site.MachineNumberChars,
+                (c, v) => c.Site.MachineNumberChars = (int)v));
 
             // ============================================================ 12 注册表加固
             list.Add(Bool("12、注册表权限加固", "RegistryAcl.Enabled", "启用注册表权限加固（总开关）",
@@ -318,6 +312,9 @@ namespace LabGuard.Core.Settings
                 c => c.Watchdog.ReportUrl, (c, v) => c.Watchdog.ReportUrl = (string)v));
             list.Add(Number("13、互相守护与自我保护", "Watchdog.AgentRestartSeconds", "代理被结束后多少秒重新拉起",
                 null, 5, 600, c => c.Watchdog.AgentRestartSeconds, (c, v) => c.Watchdog.AgentRestartSeconds = (int)v));
+            list.Add(Bool("13、互相守护与自我保护", "Watchdog.HideInstallDir", "隐藏安装目录（学生不易发现）",
+                "给安装目录加隐藏属性；关掉后老师/维护人员能正常看到（权限不因此变化）",
+                c => c.Watchdog.HideInstallDir, (c, v) => c.Watchdog.HideInstallDir = (bool)v));
             list.Add(Bool("13、互相守护与自我保护", "Watchdog.RebootOnServiceFailure", "服务异常时重启电脑【危险】",
                 "默认关（只重启服务），打开前请想清楚",
                 c => c.Watchdog.RebootOnServiceFailure, (c, v) => c.Watchdog.RebootOnServiceFailure = (bool)v, dangerous: true));

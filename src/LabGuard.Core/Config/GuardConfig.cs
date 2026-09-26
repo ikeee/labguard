@@ -24,7 +24,7 @@ namespace LabGuard.Core.Config
         public BrowserSettings Browser { get; set; } = new BrowserSettings();
         public ShellSettings Shell { get; set; } = new ShellSettings();
         public SafeModeSettings SafeMode { get; set; } = new SafeModeSettings();
-        public WallpaperSettings Wallpaper { get; set; } = new WallpaperSettings();
+        public SiteSettings Site { get; set; } = new SiteSettings();
         public RegistryAclSettings RegistryAcl { get; set; } = new RegistryAclSettings();
         public WatchdogSettings Watchdog { get; set; } = new WatchdogSettings();
 
@@ -40,7 +40,7 @@ namespace LabGuard.Core.Config
             yield return new KeyValuePair<string, bool>("浏览器策略", Browser.Enabled);
             yield return new KeyValuePair<string, bool>("任务栏/系统工具", Shell.Enabled);
             yield return new KeyValuePair<string, bool>("安全模式/启动菜单", SafeMode.Enabled);
-            yield return new KeyValuePair<string, bool>("桌面壁纸与编号", Wallpaper.Enabled);
+            yield return new KeyValuePair<string, bool>("机位编号", Site.ShowMachineNumber);
             yield return new KeyValuePair<string, bool>("注册表权限加固", RegistryAcl.Enabled);
             yield return new KeyValuePair<string, bool>("互相守护", Watchdog.Enabled);
         }
@@ -247,15 +247,12 @@ namespace LabGuard.Core.Config
         public bool HideBootMenu { get; set; } = true;
     }
 
-    public class WallpaperSettings
+    /// <summary>机位标识（**不修改学生机系统壁纸**，只用于断网遮罩等界面显示）。</summary>
+    public class SiteSettings
     {
-        public bool Enabled { get; set; } = false;
-        /// <summary>壁纸图片路径（留空 = 使用安装目录 wallpaper\ 下的图片）。</summary>
-        public string Image { get; set; } = "";
-        /// <summary>右上角显示机器编号（计算机名后 N 位）。</summary>
+        /// <summary>在断网遮罩上显示机器编号（取计算机名后 N 位）。</summary>
         public bool ShowMachineNumber { get; set; } = true;
         public int MachineNumberChars { get; set; } = 6;
-        public bool GuardWallpaper { get; set; } = true;
     }
 
     public class RegistryAclSettings
@@ -279,6 +276,8 @@ namespace LabGuard.Core.Config
         public bool RebootOnServiceFailure { get; set; } = false;
         /// <summary>代理进程被结束后自动重新拉起的间隔（秒）。</summary>
         public int AgentRestartSeconds { get; set; } = 10;
+        /// <summary>隐藏安装目录（Hidden+System 属性；学生不易发现，可在设置里关闭）。</summary>
+        public bool HideInstallDir { get; set; } = true;
         /// <summary>关键文件校验失败时是否进入锁定。</summary>
         public bool LockOnIntegrityFailure { get; set; } = true;
     }

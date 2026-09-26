@@ -14,6 +14,13 @@ namespace LabGuard.Agent
         [STAThread]
         private static void Main(string[] args)
         {
+            // 兜底：任何异常都写崩溃日志 + 弹提示，避免"双击一下就没反应/闪退"
+            LabGuard.Core.CrashHandler.Install("LabGuard.Agent");
+            LabGuard.Core.CrashHandler.Run("LabGuard.Agent", () => MainCore(args));
+        }
+
+        private static void MainCore(string[] args)
+        {
             bool dryRun = HasArg(args, "--dry-run") || HasArg(args, "/dryrun");
             Log.EchoToConsole = HasArg(args, "--console");
             Log.MinLevel = dryRun ? LogLevel.Debug : LogLevel.Info;

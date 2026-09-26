@@ -74,6 +74,7 @@ namespace LabGuard.Installer
             string dir = Value(args, "--install-dir");
             string configJson = Value(args, "--config");
             string dns = Value(args, "--dns");
+            string classroom = Value(args, "--classroom");
 
             if (string.IsNullOrEmpty(dir)) dir = InstallEngine.DefaultInstallDir();
             GuardConfig config;
@@ -86,6 +87,25 @@ namespace LabGuard.Installer
             {
                 config = new GuardConfig();
                 LabGuard.Core.Settings.Presets.All()[0].Apply(config);
+            }
+            if (!string.IsNullOrEmpty(classroom))
+            {
+                config.Classroom.MainExecutable = classroom;
+                Console.WriteLine("已指定课堂软件学生端：" + classroom);
+            }
+            else if (string.IsNullOrEmpty(config.Classroom.MainExecutable))
+            {
+                string reason;
+                var best = LabGuard.Core.Interop.ClassroomDetector.DetectBest(out reason);
+                if (best != null)
+                {
+                    config.Classroom.MainExecutable = best.Path;
+                    Console.WriteLine("自动识别的课堂软件：" + reason);
+                }
+                else
+                {
+                    Console.WriteLine("未识别到课堂软件（可在装好后到【设置】→ 第 1 组手动填写）");
+                }
             }
             if (!string.IsNullOrEmpty(dns))
             {
@@ -135,7 +155,8 @@ namespace LabGuard.Installer
             --install-dir <路径>  安装目录（默认 C:\Program Files\LabGuard）
     --password <密码>     小助手密码（6 位及以上字母数字）
     --config <json>     套用预设配置（presets\ 目录下自带两份）
-    --dns <IP>          集中 DNS（教师机 AdGuard 的 IP，可逗号分隔多个）
+    --dns <IP>          集中 DNS（可选；填了才做 DNS 锁定）
+    --classroom <exe>   课堂软件学生端路径（留空则自动识别，识别不到可在设置里填）
     --no-start          装好但先不启动（策略暂不生效，之后在设置里启用）
 ";
         }

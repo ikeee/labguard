@@ -18,6 +18,7 @@ namespace LabGuard.Agent
     internal sealed class TrayApplicationContext : ApplicationContext, ILockScreen, IAlertScreen
     {
         private readonly NotifyIcon _tray;
+        private bool _headless;   // 无桌面/托盘可用时的降级运行（监控照常，只是没有托盘）
         private readonly GuardEngine _engine;
         private readonly LockScreenForm _lockScreen;
         private readonly DisconnectMaskForm _disconnectMask = new DisconnectMaskForm();
@@ -34,20 +35,29 @@ namespace LabGuard.Agent
             _lockScreen = new LockScreenForm(_config.PasswordHash);
             _engine = new GuardEngine(_config);
 
-            _tray = new NotifyIcon
+            _tray = null;
+            try
             {
-                Icon = SystemIcons.Shield,
-                Visible = true,
-                Text = "LabGuard"
-            };
-            _tray.DoubleClick += (s, e) => ShowStatus();
-            _tray.ContextMenuStrip = BuildMenu();
+                _tray = new NotifyIcon
+                {
+                    Icon = SystemIcons.Shield,
+                    Visible = true,
+                    Text = "LabGuard 机房管控"
+                };
+                _tray.DoubleClick += (s, e) => ShowStatus();
+                _tray.ContextMenuStrip = BuildMenu();
+            }
+            catch (Exception ex)
+            {
+                // 没有桌面（被服务在会话 0 启动、explorer 未运行等）→ 降级为无界面运行，
+                // 绝不让程序"闪退"得无声无息
+                _headless = true;
+                Log.Warn("托盘图标创建失败（可能没有桌面会话），改为无界面模式继续运行监控：" + ex.Message);
+            }
 
             if (string.IsNullOrEmpty(_config.PasswordHash))
             {
-                _tray.BalloonTipTitle = "LabGuard";
-                _tray.BalloonTipText = "尚未设置密码，监控未启用。请右键托盘图标 → 系统功能 → 设置。";
-                _tray.ShowBalloonTip(6000);
+                Balloon("LabGuard", "尚未设置密码，监控未启用。请右键托盘图标 → 系统功能 → 设置。");
                 Log.Warn("未设置密码，处于「未配置」状态，不启用任何管控");
             }
             else if (Core.Interop.SafeModeDetector.ShouldSkipEnforcement(_config.SafeMode.RunInSafeMode))
@@ -80,7 +90,6 @@ namespace LabGuard.Agent
 
             menu.Items.Add("查看当前状态", null, (s, e) => ShowStatus());
             menu.Items.Add("打开日志目录", null, (s, e) => OpenPath(Log.Directory));
-            menu.Items.Add("打开安装目录", null, (s, e) => OpenPath(_installDir));
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("关于本程序", null, (s, e) => ShowAbout());
             return menu;
@@ -130,7 +139,7 @@ namespace LabGuard.Agent
             _engine.Stop(markPaused: true);
             // 与服务一起退出，保证系统状态被还原
             Core.Interop.SystemActions.Run("net.exe", "stop " + WatchdogGuard.ServiceName);
-            _tray.Visible = false;
+            if (_tray != null) _tray.Visible = false;
             Balloon("LabGuard", "已退出并还原被改动的系统设置。");
             ExitThread();
         }
@@ -183,12 +192,18 @@ namespace LabGuard.Agent
 
         private void UpdateTrayText()
         {
+            if (_tray == null) return;
             string state = _paused ? "已暂停" : (_engine.IsRunning ? "监控中" : "未启动");
             _tray.Text = ("LabGuard - " + state).Substring(0, Math.Min(60, 8 + state.Length));
         }
 
         private void Balloon(string title, string text)
         {
+            if (_tray == null)
+            {
+                Log.Info("[无界面模式] " + title + "：" + text);
+                return;
+            }
             try
             {
                 _tray.BalloonTipTitle = title;
@@ -251,8 +266,11 @@ namespace LabGuard.Agent
             if (disposing)
             {
                 _engine.Dispose();
-                _tray.Visible = false;
-                _tray.Dispose();
+                if (_tray != null)
+                {
+                    _tray.Visible = false;
+                    _tray.Dispose();
+                }
             }
             base.Dispose(disposing);
         }

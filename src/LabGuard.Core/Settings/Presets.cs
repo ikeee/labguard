@@ -61,7 +61,6 @@ namespace LabGuard.Core.Settings
                         c.Browser.Enabled = false;
                         c.Shell.Enabled = false;
                         c.SafeMode.Enabled = false;
-                        c.Wallpaper.Enabled = false;
                         c.RegistryAcl.Enabled = false;
                     }
                 },
@@ -82,7 +81,6 @@ namespace LabGuard.Core.Settings
                         c.Browser.Enabled = false;
                         c.Shell.Enabled = false;
                         c.SafeMode.Enabled = false;
-                        c.Wallpaper.Enabled = false;
                         c.RegistryAcl.Enabled = false;
                         c.Watchdog.Enabled = false;
                     }
@@ -127,8 +125,7 @@ namespace LabGuard.Core.Settings
             c.Browser.Enabled = true;
             c.Shell.Enabled = true;
             c.SafeMode.Enabled = true;
-            c.Wallpaper.Enabled = true;
-            c.Wallpaper.ShowMachineNumber = true;
+            c.Site.ShowMachineNumber = true;
             c.RegistryAcl.Enabled = true;
             c.Watchdog.Enabled = true;
             c.Watchdog.RebootOnServiceFailure = false;
