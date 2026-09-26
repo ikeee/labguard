@@ -23,6 +23,7 @@ namespace LabGuard.Core.UI
         private readonly Label _title;
         private readonly Label _hint;
         private readonly Label _number;
+        private string _machineNumber = "";
         private readonly Panel _card;
         private Image _background;
         private Func<bool> _networkRestored;
@@ -86,10 +87,29 @@ namespace LabGuard.Core.UI
                 try
                 {
                     if (_networkRestored != null && _networkRestored()) { AutoClose("网络已恢复"); return; }
-                    if (_elapsedText != null) _number.Text = _elapsedText();
+                    UpdateBottomLine();
                 }
                 catch { }
             };
+        }
+
+        /// <summary>底部那一行的实际文本（截图/自检用）。</summary>
+        public string BottomLineText { get { return _number.Text; } }
+
+        /// <summary>
+        /// 底部那一行：机位号 + 已断开时长。两者都要能看见，所以拼成一行，
+        /// 而不是让"时长"把"机位号"顶掉（否则开了时长就永远看不到机位号）。
+        /// </summary>
+        private void UpdateBottomLine()
+        {
+            string text = _machineNumber ?? "";
+            if (_elapsedText != null)
+            {
+                string elapsed = _elapsedText();
+                if (!string.IsNullOrEmpty(elapsed))
+                    text = string.IsNullOrEmpty(text) ? elapsed : text + " · " + elapsed;
+            }
+            _number.Text = text;
         }
 
         public void ShowMask(string machineNumber, string headLine, string advice, string passwordHash,
@@ -112,7 +132,8 @@ namespace LabGuard.Core.UI
             _title.Text = headLine;
             _hint.Text = advice + Environment.NewLine + Environment.NewLine +
                          "（恢复网络后 10 秒内自动消失；老师连续按 5 次 Esc 可输入密码解除）";
-            _number.Text = machineNumber;
+            _machineNumber = machineNumber;
+            UpdateBottomLine();
 
             LoadBackground(randomWallpaper);
             RelayoutCard();

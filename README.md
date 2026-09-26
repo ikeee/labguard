@@ -203,6 +203,7 @@ scripts/install.ps1          安装（服务 + 计划任务 + 快捷方式 + 目
 scripts/uninstall.ps1        卸载
 scripts/make-wallpapers.ps1  生成断网遮罩用的 6 张背景图（~1920×1080）
 docs/                        原理分析 / 设计说明 / 功能对照表
+docs/screenshots/            界面截图（由程序 --screenshot 自己渲染，见第 8 节）
 ```
 
 ## 7. 安全与合规
@@ -214,3 +215,119 @@ docs/                        原理分析 / 设计说明 / 功能对照表
   （设置第 13 组「隐藏安装目录」，默认开；关掉后老师/维护人员能正常看到，权限不变）。
 - 运行中若出现异常，会写崩溃日志 `%ProgramData%\LabGuard\logs\crash-*.log` 并弹框说明原因，**不会无声退出**。
 - 日志：`%ProgramData%\LabGuard\logs\guard-YYYYMMDD.log`。
+
+## 8. 界面预览
+
+下面这些图**不是手工截屏，是程序自己渲染出来的**，所以永远不会和代码不同步：
+
+```bat
+LabGuard.Settings.exe --screenshot D:\shots        :: 14 个设置分组
+LabGuard.Settings.exe --screenshot-mask D:\mask.png :: 断网全屏遮罩
+LabGuard.Installer.exe --screenshot D:\shots        :: 安装向导 6 页
+```
+
+（三个开关都只渲染界面，**不改系统、不写配置、不安装**。）
+
+### 8.1 学生拔掉网线后：全屏遮罩
+
+6 张背景随机选一张，按任何键都退不出，插回网线 10 秒内自动恢复；没插回来则按设置响鸣（默认 60 秒后嘀嘀嘀 ×3）。
+
+<img src="docs/screenshots/disconnect-mask.png" width="820" alt="断网全屏遮罩">
+
+### 8.2 一键安装程序（6 步向导）
+
+<details>
+<summary><b>展开 6 个页面</b></summary>
+
+**1. 欢迎（先读说明再同意）**
+
+<img src="docs/screenshots/wizard-1-welcome.png" width="820">
+
+**2. 安装位置（默认系统程序目录，普通用户不可写；也可自定义）**
+
+<img src="docs/screenshots/wizard-2-location.png" width="820">
+
+**3. 课堂软件（自动识别，识别不到给输入框 / 浏览）**
+
+<img src="docs/screenshots/wizard-3-classroom.png" width="820">
+
+**4. 设置密码（退出 / 卸载都要它）**
+
+<img src="docs/screenshots/wizard-4-password.png" width="820">
+
+**5. 功能开关（92 项，逐项开或关）**
+
+<img src="docs/screenshots/wizard-5-switches.png" width="820">
+
+**6. 安装（确认清单后开始）**
+
+<img src="docs/screenshots/wizard-6-install.png" width="820">
+
+</details>
+
+### 8.3 设置程序（14 组 / 92 项开关）
+
+左侧分组导航（带"已改 N 项"标记）+ 右上搜索 + 只看已改动。**没有任何隐藏开关**：自检会核对每个配置项都能在界面上找到（见第 5 节）。
+
+<details>
+<summary><b>展开全部 14 个分组</b></summary>
+
+**0、总体（3 项）**
+
+<img src="docs/screenshots/settings-01-overview.png" width="860">
+
+**1、电子教室保护（7 项）**
+
+<img src="docs/screenshots/settings-02-classroom.png" width="860">
+
+**2、网络与防火墙（16 项：拔网线判定 / 只监视有线网卡 / 断网遮罩 / 响鸣参数）**
+
+<img src="docs/screenshots/settings-03-network-firewall.png" width="860">
+
+**3、集中 DNS（上网过滤主防线，4 项）**
+
+<img src="docs/screenshots/settings-04-central-dns.png" width="860">
+
+**4、违规软件拦截（12 项）**
+
+<img src="docs/screenshots/settings-05-process-block.png" width="860">
+
+**5、新文件 / 下载监控（6 项）**
+
+<img src="docs/screenshots/settings-06-file-creation.png" width="860">
+
+**6、USB 存储设备（3 项）**
+
+<img src="docs/screenshots/settings-07-usb.png" width="860">
+
+**7、hosts 黑名单（7 项；有集中 DNS 时不需要，默认关）**
+
+<img src="docs/screenshots/settings-08-hosts.png" width="860">
+
+**8、浏览器管控（9 项）**
+
+<img src="docs/screenshots/settings-09-browser.png" width="860">
+
+**9、任务栏与系统工具（10 项）**
+
+<img src="docs/screenshots/settings-10-shell.png" width="860">
+
+**10、安全模式与启动菜单（4 项）**
+
+<img src="docs/screenshots/settings-11-safe-mode.png" width="860">
+
+**11、机位标识（2 项；不修改系统壁纸，编号只画在断网遮罩上）**
+
+<img src="docs/screenshots/settings-12-machine-id.png" width="860">
+
+**12、注册表权限加固（2 项）**
+
+<img src="docs/screenshots/settings-13-registry-acl.png" width="860">
+
+**13、互相守护与自我保护（7 项；含"隐藏安装目录"）**
+
+<img src="docs/screenshots/settings-14-watchdog.png" width="860">
+
+</details>
+
+> 截图里的值都是**出厂默认值**（渲染时读的是默认配置，不含任何本机信息）。

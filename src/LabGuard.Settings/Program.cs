@@ -46,7 +46,7 @@ namespace LabGuard.Settings
                 using (var mask = new LabGuard.Core.UI.DisconnectMaskForm())
                 {
                     LabGuard.Core.UI.UiCapture.ShowOffScreen(mask);
-                    mask.ShowMask("机位 160161", "网络已断开", "请插回网线或启用网络连接",
+                    mask.ShowMask("机位 1001", "网络已断开", "请插回网线或启用网络连接",
                         string.IsNullOrEmpty(config.PasswordHash) ? PasswordHasher.Create("a1b2c3") : config.PasswordHash,
                         true, true,
                         () => "已断开 0 分 42 秒 · 插回网线后 10 秒内自动恢复",
@@ -55,6 +55,7 @@ namespace LabGuard.Settings
                     System.Threading.Thread.Sleep(600);
                     Application.DoEvents();
                     string ok = LabGuard.Core.UI.UiCapture.Save(mask, file);
+                    LabGuard.Core.Logging.Log.Info("[截图] 遮罩底部行 =「" + mask.BottomLineText + "」");
                     mask.AutoClose("截图完成");
                     Console.WriteLine(ok ?? "截图失败");
                 }
