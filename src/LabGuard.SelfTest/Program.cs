@@ -144,6 +144,18 @@ namespace LabGuard.SelfTest
             Check("IP 归零 0.0.0.0 = 断网", NetworkGuard.IsDisconnected("0.0.0.0", true));
             Check("正常固定 IP ≠ 断网", !NetworkGuard.IsDisconnected("192.168.50.100", true));
             Check("正常 DHCP IP ≠ 断网", !NetworkGuard.IsDisconnected("10.53.3.224", true));
+            Console.WriteLine("[5.1] 锁屏/遮罩的输入硬锁（InputLock）");
+            Check("模式归一化：Off 只认 Off", LabGuard.Core.Interop.InputLock.Normalize("Off") == "Off");
+            Check("模式归一化：空值/怪值都按 On 处理",
+                LabGuard.Core.Interop.InputLock.Normalize(null) == "On" &&
+                LabGuard.Core.Interop.InputLock.Normalize("") == "On" &&
+                LabGuard.Core.Interop.InputLock.Normalize("on") == "On" &&
+                LabGuard.Core.Interop.InputLock.Normalize("xxx") == "On");
+            Check("默认配置 = 锁住（On）", new GuardConfig().InputHardLock == "On");
+            LabGuard.Core.Interop.InputLock.Engage("Off");          // Off 不应上锁
+            Check("Off 不上锁", !LabGuard.Core.Interop.InputLock.IsActive);
+            LabGuard.Core.Interop.InputLock.Disengage();            // 不应抛异常
+            Check("Disengage 在未上锁时也安全", true);
         }
 
         private static void TestDnsRule()

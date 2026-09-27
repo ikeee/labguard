@@ -53,6 +53,12 @@ namespace LabGuard.Core.Settings
             list.Add(Number("0、总体", "ResumeAfterMinutes", "暂停后自动恢复监控（分钟）",
                 "0 = 不自动恢复；例如填 45 = 老师暂停后 45 分钟自动重新开启", 0, 1440,
                 c => c.ResumeAfterMinutes, (c, v) => c.ResumeAfterMinutes = (int)v));
+            list.Add(Choice("0、总体", "InputHardLock", "锁屏/断网遮罩期间锁住鼠标键盘",
+                "On = 用系统 BlockInput 连鼠标一起锁（学生按什么都没反应）；老师按 Ctrl+Alt+Del 可取回输入（Windows 保留通道）。" +
+                "Off = 只靠全屏置顶窗口 + 键盘钩子（鼠标仍可移动，但点在遮罩上没有效果）。" +
+                "需要管理员权限才生效；界面心跳中断会自动解锁，不会把老师锁在机器外。",
+                c => c.InputHardLock, (c, v) => c.InputHardLock = (string)v,
+                new[] { "锁住（推荐）", "不锁" }, new[] { "On", "Off" }));
 
             // ============================================================ 1 电子教室
             list.Add(Bool("1、电子教室保护", "Classroom.Enabled", "启用电子教室保护（本组总开关）", null,

@@ -8,6 +8,11 @@ namespace LabGuard.Core.Config
     {
         public int Version { get; set; } = 1;
         public string PasswordHash { get; set; } = "";
+        /// <summary>
+        /// 全屏锁定 / 断网遮罩期间是否把鼠标键盘一起锁住（"Off" / "On"）。
+        /// 默认 On：学生按什么都没反应；老师按 Ctrl+Alt+Del 可取回输入（Windows 保留通道）。
+        /// </summary>
+        public string InputHardLock { get; set; } = "On";
         /// <summary>已安装/已启用管控的总开关；关闭后各 Guard 不再纠正系统状态。</summary>
         public bool Enabled { get; set; } = true;
         /// <summary>退出/暂停后自动恢复管控的时间（分钟），0 = 不自动恢复。</summary>

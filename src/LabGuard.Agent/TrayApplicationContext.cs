@@ -37,6 +37,7 @@ namespace LabGuard.Agent
             _installDir = GuardEngine.RequireInstallDir();
             _lockScreen = new LockScreenForm(_config.PasswordHash);
             _engine = new GuardEngine(_config);
+            ApplyInputLockMode();
 
             _tray = null;
             try
@@ -98,11 +99,20 @@ namespace LabGuard.Agent
             return menu;
         }
 
+        /// <summary>把"锁屏/遮罩是否硬锁鼠标键盘"从配置同步给两个全屏窗体（配置改动后也会重新调用）。</summary>
+        private void ApplyInputLockMode()
+        {
+            string mode = LabGuard.Core.Interop.InputLock.Normalize(_config.InputHardLock);
+            _lockScreen.InputLockMode = mode;
+            _disconnectMask.InputLockMode = mode;
+        }
+
         private void StartEngine()
         {
             try
             {
                 _config = ConfigStore.Load();
+                ApplyInputLockMode();
                 // 后路：安全模式下即使手动点"启动监控"也不加载（老师可在安全模式里修/卸载完再回正常模式）
                 if (Core.Interop.SafeModeDetector.ShouldSkipEnforcement(_config.SafeMode.RunInSafeMode))
                 {

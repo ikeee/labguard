@@ -19,18 +19,24 @@ namespace LabGuard.Core.UI
         private readonly TextBox _password;
         private readonly Timer _watch;
         private readonly string _passwordHash;
+        private readonly Panel _stage;      // 覆盖"所有显示器"的底色层
+        private readonly Panel _content;    // 贴在主显示器上居中的内容层
         private Func<bool> _resolved;
         private IntPtr _hook = IntPtr.Zero;
+        private bool _engaged;              // 是否已 Engage 输入硬锁（防重复上锁/重复解锁）
         private NativeMethods.LowLevelKeyboardProc _proc;
 
         private const int WhKeyboardLl = 13;
+
+        /// <summary>锁屏期间是否硬锁鼠标键盘（InputLock.ModeOff / ModeOn），由 Agent 从配置注入。</summary>
+        public string InputLockMode { get; set; } = InputLock.ModeOn;
 
         public LockScreenForm(string passwordHash)
         {
             _passwordHash = passwordHash;
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
-            Bounds = Screen.PrimaryScreen.Bounds;
+            Bounds = SystemInformation.VirtualScreen;   // 多屏：连非主显示器一起盖住
             TopMost = true;
             ShowInTaskbar = false;
             BackColor = Color.FromArgb(10, 20, 60);
@@ -59,7 +65,6 @@ namespace LabGuard.Core.UI
                 TextAlign = HorizontalAlignment.Center
             };
             var panel = new Panel { Dock = DockStyle.Bottom, Height = 90 };
-            _password.Left = (Screen.PrimaryScreen.Bounds.Width - _password.Width) / 2;
             _password.Top = 20;
             _password.KeyDown += (s, e) =>
             {
@@ -76,19 +81,36 @@ namespace LabGuard.Core.UI
             };
             panel.Controls.Add(_password);
 
-            Controls.Add(_messageLabel);
-            Controls.Add(panel);
-            Controls.Add(_titleLabel);
+            // 内容放在"主显示器大小"的容器里居中：文字不会卡在两屏接缝上
+            _stage = new Panel { Dock = DockStyle.Fill, BackColor = BackColor };
+            _content = new Panel { BackColor = BackColor };
+            _content.Controls.Add(_messageLabel);
+            _content.Controls.Add(panel);
+            _content.Controls.Add(_titleLabel);
+            _stage.Controls.Add(_content);
+            Controls.Add(_stage);
+            CenterContent();
 
             _watch = new Timer { Interval = 3000 };
             _watch.Tick += (s, e) =>
             {
+                InputLock.KeepAlive();
                 if (_resolved != null)
                 {
                     try { if (_resolved()) { Unlock_AndClose(); return; } }
                     catch { }
                 }
             };
+        }
+
+        private static Rectangle PrimaryScreen() { return Screen.PrimaryScreen.Bounds; }
+        private static Rectangle WholeDesktop() { return SystemInformation.VirtualScreen; }
+
+        private void CenterContent()
+        {
+            Rectangle pa = PrimaryScreen(), va = WholeDesktop();
+            _content.Bounds = new Rectangle(pa.Left - va.Left, pa.Top - va.Top, pa.Width, pa.Height);
+            _password.Left = (pa.Width - _password.Width) / 2;
         }
 
         public LockScreenForm() : this("") { }
@@ -109,13 +131,19 @@ namespace LabGuard.Core.UI
             if (InvokeRequired) { BeginInvoke(new Action(() => ShowLock(title, message, fakeBlueScreen, conditionResolved))); return; }
             _titleLabel.Text = title;
             _messageLabel.Text = message + "\r\n\r\n（输入老师密码可解除锁定；恢复被破坏的设置后也会自动解除）";
-            BackColor = fakeBlueScreen ? Color.FromArgb(0, 40, 120) : Color.FromArgb(10, 20, 60);
+            Color bg = fakeBlueScreen ? Color.FromArgb(0, 40, 120) : Color.FromArgb(10, 20, 60);
+            BackColor = bg;
+            _stage.BackColor = bg;
+            _content.BackColor = bg;
             _resolved = conditionResolved;
             _password.Clear();
+            Bounds = SystemInformation.VirtualScreen;
+            CenterContent();
             if (!Visible) Show();
             WindowState = FormWindowState.Maximized;
             TopMost = true;
             Cursor.Hide();
+            if (!_engaged) { InputLock.Engage(InputLockMode); _engaged = true; }
             _watch.Start();
             _password.Focus();
         }
@@ -123,8 +151,15 @@ namespace LabGuard.Core.UI
         public void Unlock_AndClose()
         {
             _watch.Stop();
+            if (_engaged) { InputLock.Disengage(); _engaged = false; }
             Cursor.Show();
             Hide();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && _engaged) { InputLock.Disengage(); _engaged = false; }
+            base.Dispose(disposing);
         }
 
         protected override void OnShown(EventArgs e)

@@ -45,6 +45,8 @@ namespace LabGuard.Settings
                 Application.SetCompatibleTextRenderingDefault(false);
                 using (var mask = new LabGuard.Core.UI.DisconnectMaskForm())
                 {
+                    // 截图模式不锁输入（否则渲染这几百毫秒里会把操作者的键鼠一起锁住）
+                    mask.InputLockMode = LabGuard.Core.Interop.InputLock.ModeOff;
                     LabGuard.Core.UI.UiCapture.ShowOffScreen(mask);
                     mask.ShowMask("机位 1001", "网络已断开", "请插回网线或启用网络连接",
                         string.IsNullOrEmpty(config.PasswordHash) ? PasswordHasher.Create("a1b2c3") : config.PasswordHash,

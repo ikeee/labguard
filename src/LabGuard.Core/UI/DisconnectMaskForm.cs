@@ -38,11 +38,16 @@ namespace LabGuard.Core.UI
 
         private const int WhKeyboardLl = 13;
 
+        /// <summary>遮罩期间是否硬锁鼠标键盘（InputLock.ModeOff / ModeOn），由 Agent 从配置注入。</summary>
+        public string InputLockMode { get; set; } = InputLock.ModeOn;
+
+        private bool _inputEngaged;
+
         public DisconnectMaskForm()
         {
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
-            Bounds = Screen.PrimaryScreen.Bounds;
+            Bounds = SystemInformation.VirtualScreen;   // 多屏：连非主显示器一起盖住
             TopMost = true;
             ShowInTaskbar = false;
             BackColor = Color.FromArgb(8, 14, 28);
@@ -88,6 +93,7 @@ namespace LabGuard.Core.UI
                 {
                     if (_networkRestored != null && _networkRestored()) { AutoClose("网络已恢复"); return; }
                     UpdateBottomLine();
+                    InputLock.KeepAlive();
                 }
                 catch { }
             };
@@ -138,6 +144,8 @@ namespace LabGuard.Core.UI
             LoadBackground(randomWallpaper);
             RelayoutCard();
 
+            Bounds = SystemInformation.VirtualScreen;
+            if (!_inputEngaged) { InputLock.Engage(InputLockMode); _inputEngaged = true; }
             if (!Visible) Show();
             WindowState = FormWindowState.Maximized;
             TopMost = true;
@@ -164,9 +172,10 @@ namespace LabGuard.Core.UI
 
         private void RelayoutCard()
         {
-            Rectangle screen = Screen.PrimaryScreen.Bounds;
-            _card.Left = (screen.Width - _card.Width) / 2;
-            _card.Top = (screen.Height - _card.Height) / 2;
+            // 卡片贴在主显示器上居中（窗口本身覆盖所有显示器）
+            Rectangle pa = Screen.PrimaryScreen.Bounds, va = SystemInformation.VirtualScreen;
+            _card.Left = (pa.Left - va.Left) + (pa.Width - _card.Width) / 2;
+            _card.Top = (pa.Top - va.Top) + (pa.Height - _card.Height) / 2;
         }
 
         protected override void OnPaintBackground(PaintEventArgs e)
@@ -230,6 +239,9 @@ namespace LabGuard.Core.UI
         private void AskTeacherPassword()
         {
             _tick.Stop();
+            // 老师要走解锁流程 → 先放掉输入硬锁，否则密码框根本打不进字
+            // （学生拿不到这条路径：它要靠 5 次 Esc，而 Esc 会被遮罩吞掉/计数）
+            if (_inputEngaged) { InputLock.Disengage(); _inputEngaged = false; }
             Cursor.Show();
             using (var dlg = new PasswordDialog("LabGuard · 解除断网遮罩",
                        "输入小助手密码（解除后监控会暂停，避免马上又弹出）：", _passwordHash))
@@ -242,6 +254,7 @@ namespace LabGuard.Core.UI
                     return;
                 }
             }
+            if (!_inputEngaged) { InputLock.Engage(InputLockMode); _inputEngaged = true; }
             Cursor.Hide();
             _tick.Start();
         }
@@ -251,6 +264,7 @@ namespace LabGuard.Core.UI
             if (_closed) return;
             _closed = true;
             _tick.Stop();
+            if (_inputEngaged) { InputLock.Disengage(); _inputEngaged = false; }
             Cursor.Show();
             if (_hook != IntPtr.Zero)
             {

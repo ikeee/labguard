@@ -234,7 +234,7 @@ namespace LabGuard.Installer
 
         private TabPage TabOptions()
         {
-            var page = new TabPage("5. 功能开关（92 项，可逐项开关）") { Padding = new Padding(10) };
+            var page = new TabPage("5. 功能开关（93 项，可逐项开关）") { Padding = new Padding(10) };
             var top = new Panel { Dock = DockStyle.Top, Height = 76 };
             var lbl = new Label { Text = "先套用一个预设，再按需逐项调整：", Left = 6, Top = 8, Width = 330 };
             _presetBox.Left = 6; _presetBox.Top = 30;
