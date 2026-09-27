@@ -164,12 +164,36 @@ namespace LabGuard.Installer
             };
             var hint = new Label
             {
-                Left = 20, Top = 140, Width = 800, Height = 90, ForeColor = Color.DimGray,
+                Left = 20, Top = 176, Width = 800, Height = 90, ForeColor = Color.DimGray,
                 Text = "· 默认装在系统程序目录：普通用户不可写，也不能随手删除；路径固定，便于统一维护。\n" +
                        "· 若学校习惯统一目录（便于维护、便于组策略下发），请选“自定义”，例如 C:\\LabGuard。\n" +
+                       "· 「不显眼目录名」只是把名字换成看不出用途的形式（依然在系统程序目录里，权限一样收紧）；\n" +
+                       "  好处是学生按名字搜不到、随手删不掉；代价是维护时要先看安装登记或跑 --show-config 才知道路径。\n" +
                        "· 无论选哪个，安装目录都会自动收紧权限，普通用户只能读、不能改。"
             };
-            page.Controls.AddRange(new Control[] { _dirDefault, lblDef, _dirCustom, _dir, browse, hint });
+
+            // 可选：不显眼目录名（默认关；勾上就切到"自定义"并把路径换成自动生成的名字）
+            var disguise = new CheckBox
+            {
+                Text = "目录名不显眼（自动生成，例如  C:\\Program Files\\f738291）——学生不容易找到",
+                Left = 20, Top = 128, Width = 800, Height = 24
+            };
+            disguise.CheckedChanged += (s, e) =>
+            {
+                if (disguise.Checked)
+                {
+                    string hidden = InstallEngine.DisguisedInstallDir();
+                    if (string.IsNullOrEmpty(hidden)) { disguise.Checked = false; return; }
+                    _dirCustom.Checked = true;      // 走"自定义"分支，安装时用下面这个路径
+                    _dir.Text = hidden;
+                }
+                else
+                {
+                    _dirCustom.Checked = false;     // 取消勾选 → 回到默认目录
+                }
+            };
+
+            page.Controls.AddRange(new Control[] { _dirDefault, lblDef, _dirCustom, _dir, browse, disguise, hint });
             return page;
         }
 

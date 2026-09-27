@@ -80,6 +80,23 @@ namespace LabGuard.Installer
             return @"C:\LabGuard";
         }
 
+        /// <summary>
+        /// "不显眼"的安装目录（可选）：仍然装在系统程序目录下（保留普通用户不可写的 ACL 优势），
+        /// 但目录名换成看不出用途的形式，学生不容易按名字搜到、随手删掉。
+        /// 返回 null 表示取不到程序目录（调用方应退回 DefaultInstallDir()）。
+        /// </summary>
+        public static string DisguisedInstallDir()
+        {
+            try
+            {
+                string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                if (string.IsNullOrEmpty(programFiles)) return null;
+                var rnd = new Random();
+                return Path.Combine(programFiles, "f" + rnd.Next(100000, 999999));
+            }
+            catch { return null; }
+        }
+
         public void Install()
         {
             Say("=== 开始安装 ===");

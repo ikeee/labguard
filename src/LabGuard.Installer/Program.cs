@@ -95,7 +95,12 @@ namespace LabGuard.Installer
             string dns = Value(args, "--dns");
             string classroom = Value(args, "--classroom");
 
-            if (string.IsNullOrEmpty(dir)) dir = InstallEngine.DefaultInstallDir();
+            if (string.IsNullOrEmpty(dir))
+            {
+                dir = Has(args, "--disguise-dir")
+                    ? (InstallEngine.DisguisedInstallDir() ?? InstallEngine.DefaultInstallDir())
+                    : InstallEngine.DefaultInstallDir();
+            }
             GuardConfig config;
             if (!string.IsNullOrEmpty(configJson) && File.Exists(configJson))
             {
@@ -172,6 +177,7 @@ namespace LabGuard.Installer
     --silent            静默安装（不开向导；需要 --password）
     --dry-run           预演：只打印将执行的步骤，不改系统
             --install-dir <路径>  安装目录（默认 C:\Program Files\LabGuard）
+    --disguise-dir      安装目录名不显眼（自动生成，如 C:\Program Files\f738291；未指定 --install-dir 时生效）
     --password <密码>     小助手密码（6 位及以上字母数字）
     --config <json>     套用预设配置（presets\ 目录下自带两份）
     --dns <IP>          集中 DNS（可选；填了才做 DNS 锁定）
