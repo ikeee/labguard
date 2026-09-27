@@ -156,6 +156,18 @@ namespace LabGuard.SelfTest
             Check("Off 不上锁", !LabGuard.Core.Interop.InputLock.IsActive);
             LabGuard.Core.Interop.InputLock.Disengage();            // 不应抛异常
             Check("Disengage 在未上锁时也安全", true);
+
+            Console.WriteLine("[5.2] 注册表权限加固（P3）");
+            var aclCfg = new GuardConfig().RegistryAcl;
+            Check("默认加固 LabGuard 自己的键", aclCfg.Keys.Contains(@"HKEY_LOCAL_MACHINE\SOFTWARE\LabGuard"));
+            Check("默认加固课堂软件的键（频道/自动登录参数）",
+                aclCfg.Keys.Contains(@"HKEY_LOCAL_MACHINE\SOFTWARE\TopDomain\e-Learning Class\Student"));
+            Check("「连管理员也锁」默认关闭", !aclCfg.DenyAdminsWrite);
+            foreach (string k in aclCfg.Keys)
+            {
+                Check("键路径写法合法：" + k,
+                    k.StartsWith("HKEY_LOCAL_MACHINE\\") || k.StartsWith("HKEY_CURRENT_USER\\"));
+            }
         }
 
         private static void TestDnsRule()

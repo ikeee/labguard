@@ -59,6 +59,7 @@ namespace LabGuard.Core.Guards
                     using (RegistryKey key = baseKey.OpenSubKey(sub, RegistryKeyPermissionCheck.ReadSubTree, RegistryRights.ReadPermissions))
                     {
                         if (key == null) return false;
+                        bool checkAdmins = Context != null && Context.Config.RegistryAcl.DenyAdminsWrite;
                         RegistrySecurity sec = key.GetAccessControl(AccessControlSections.Access);
                         foreach (RegistryAccessRule rule in sec.GetAccessRules(true, true, typeof(SecurityIdentifier)))
                         {
@@ -67,7 +68,9 @@ namespace LabGuard.Core.Guards
                             bool isUsers = sid.IsWellKnown(WellKnownSidType.BuiltinUsersSid) ||
                                            sid.IsWellKnown(WellKnownSidType.AuthenticatedUserSid) ||
                                            sid.IsWellKnown(WellKnownSidType.WorldSid);
-                            if (isUsers && (rule.RegistryRights & RegistryRights.SetValue) == RegistryRights.SetValue) return false;
+                            bool isAdmins = sid.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid);
+                            if ((isUsers || (checkAdmins && isAdmins)) &&
+                                (rule.RegistryRights & RegistryRights.SetValue) == RegistryRights.SetValue) return false;
                         }
                         return true;
                     }
@@ -80,7 +83,8 @@ namespace LabGuard.Core.Guards
         {
             if (Log.DryRun)
             {
-                Log.Info("[dry] 将加固注册表权限：" + fullKey + "（拒绝 Builtin\\Users 写入）");
+                Log.Info("[dry] 将加固注册表权限：" + fullKey + "（拒绝 Builtin\\Users 写入"
+                         + (Context.Config.RegistryAcl.DenyAdminsWrite ? "，并拒绝管理员写入" : "") + "）");
                 return;
             }
             try
@@ -89,15 +93,28 @@ namespace LabGuard.Core.Guards
                 using (RegistryKey baseKey = OpenBase(fullKey, out sub))
                 {
                     if (baseKey == null) { Log.Warn("不支持的注册表根：" + fullKey); return; }
-                    using (RegistryKey key = baseKey.CreateSubKey(sub, RegistryKeyPermissionCheck.ReadWriteSubTree))
+                    // 只用 OpenSubKey：**不存在的键就跳过**。
+                    // （以前用 CreateSubKey 会凭空把键建出来 —— 例如机器上没装某课堂软件时，
+                    //   加固它的键会在注册表里留下一个空壳，属于副作用。）
+                    using (RegistryKey key = baseKey.OpenSubKey(sub, RegistryKeyPermissionCheck.ReadWriteSubTree))
                     {
-                        if (key == null) return;
+                        if (key == null) { Log.Info("跳过（键不存在）：" + fullKey); return; }
                         RegistrySecurity sec = key.GetAccessControl(AccessControlSections.Access);
                         var users = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
                         // 拒绝普通用户写入（Administrators / SYSTEM 不受影响，仍可退出后改回）
                         sec.AddAccessRule(new RegistryAccessRule(users,
                             RegistryRights.SetValue | RegistryRights.CreateSubKey | RegistryRights.Delete,
                             InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Deny));
+                        if (Context.Config.RegistryAcl.DenyAdminsWrite)
+                        {
+                            // 原版 regini 的"锁成只读"配方（[2 8 19] = 管理员/Everyone/SYSTEM 都只读）：
+                            // 连管理员也不许写，只留 SYSTEM 完全控制（服务仍可回写）。
+                            // 注意：Deny 里不含 ChangePermissions，所以所有者/管理员随时能改回来。
+                            var admins = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+                            sec.AddAccessRule(new RegistryAccessRule(admins,
+                                RegistryRights.SetValue | RegistryRights.CreateSubKey | RegistryRights.Delete,
+                                InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Deny));
+                        }
                         key.SetAccessControl(sec);
                         Log.Info("已加固注册表权限：" + fullKey);
                     }
@@ -122,6 +139,8 @@ namespace LabGuard.Core.Guards
                             if (key == null) continue;
                             RegistrySecurity sec = key.GetAccessControl(AccessControlSections.Access);
                             sec.RemoveAccessRuleAll(new RegistryAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+                                RegistryRights.FullControl, InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Deny));
+                            sec.RemoveAccessRuleAll(new RegistryAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
                                 RegistryRights.FullControl, InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Deny));
                             key.SetAccessControl(sec);
                         }

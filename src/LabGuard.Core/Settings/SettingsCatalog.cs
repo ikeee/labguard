@@ -306,6 +306,12 @@ namespace LabGuard.Core.Settings
             list.Add(List("12、注册表权限加固", "RegistryAcl.Keys", "加固的注册表键（一行一个）",
                 "HKEY_LOCAL_MACHINE\\SOFTWARE\\LabGuard 等",
                 c => c.RegistryAcl.Keys, (c, v) => c.RegistryAcl.Keys = (List<string>)v));
+            list.Add(Bool("12、注册表权限加固", "RegistryAcl.DenyAdminsWrite", "连管理员也不许改这些键（只读锁定）",
+                "打开后：管理员/普通用户都改不了上面列表里的键，只有 SYSTEM 保留完全控制（服务仍能回写）。" +
+                "等价于原版用 regini 把键设成「只读」的做法，对付「学生本来就是管理员」的机房。" +
+                "注意：开了以后老师用管理员账号也改不了这些键 —— 要先关闭本开关（或停掉服务）才能改；" +
+                "列表里不存在的键会自动跳过，不会凭空创建。",
+                c => c.RegistryAcl.DenyAdminsWrite, (c, v) => c.RegistryAcl.DenyAdminsWrite = (bool)v));
 
             // ============================================================ 13 互相守护
             list.Add(Bool("13、互相守护与自我保护", "Watchdog.Enabled", "启用守护（总开关）", null,

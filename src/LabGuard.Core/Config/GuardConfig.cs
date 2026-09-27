@@ -266,8 +266,16 @@ namespace LabGuard.Core.Config
         /// <summary>被加固的注册表键（拒绝普通用户写入）。</summary>
         public List<string> Keys { get; set; } = new List<string>
         {
-            @"HKEY_LOCAL_MACHINE\SOFTWARE\LabGuard"
+            @"HKEY_LOCAL_MACHINE\SOFTWARE\LabGuard",
+            // 课堂软件自己的键（学生用破解工具常改这里的频道/自动登录参数）。
+            // 机器上没装这个软件时该键不存在 → 加固会自动跳过，不会凭空创建。
+            @"HKEY_LOCAL_MACHINE\SOFTWARE\TopDomain\e-Learning Class\Student"
         };
+        /// <summary>
+        /// 连管理员也不许写这些键（等价原版 regini 的"锁成只读"配方；SYSTEM 保留完全控制，服务仍可回写）。
+        /// 默认关：打开后老师用管理员账号也改不了这些键，需要先关掉本开关或停服务。
+        /// </summary>
+        public bool DenyAdminsWrite { get; set; } = false;
     }
 
     public class WatchdogSettings
