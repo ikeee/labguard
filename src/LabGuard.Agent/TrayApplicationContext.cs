@@ -149,6 +149,14 @@ namespace LabGuard.Agent
         private void ExitProgram()
         {
             if (!Verify("退出程序")) return;
+            // 延时确认：退出=停止管控，不可逆（要重新输密码才能开回来）
+            if (!CountdownDialog.Confirm("LabGuard - 退出程序",
+                    "将退出监控并还原被改动的系统设置（USB / hosts / 策略 / IFEO / 安全模式限制等）。\r\n\r\n" +
+                    "退出后学生将不再受管控；要重新开启，需要再输入密码。\r\n\r\n确定退出吗？",
+                    _config.ConfirmDelaySeconds))
+            {
+                return;
+            }
             _engine.Stop(markPaused: true);
             // 与服务一起退出，保证系统状态被还原
             Core.Interop.SystemActions.Run("net.exe", "stop " + WatchdogGuard.ServiceName);

@@ -59,6 +59,10 @@ namespace LabGuard.Core.Settings
                 "需要管理员权限才生效；界面心跳中断会自动解锁，不会把老师锁在机器外。",
                 c => c.InputHardLock, (c, v) => c.InputHardLock = (string)v,
                 new[] { "锁住（推荐）", "不锁" }, new[] { "On", "Off" }));
+            list.Add(Number("0、总体", "ConfirmDelaySeconds", "危险操作确认前的等待（秒）",
+                "卸载、退出监控这类不可逆操作，点「确定」前要等这么多秒（按钮上显示倒计时），期间只有「取消」能点。" +
+                "目的：防手滑误点，也让偶尔猜到密码的人没法一秒清空管控。0 = 不等待（不推荐）。",
+                0, 60, c => c.ConfirmDelaySeconds, (c, v) => c.ConfirmDelaySeconds = (int)v));
 
             // ============================================================ 1 电子教室
             list.Add(Bool("1、电子教室保护", "Classroom.Enabled", "启用电子教室保护（本组总开关）", null,

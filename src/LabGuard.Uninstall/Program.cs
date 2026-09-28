@@ -117,12 +117,14 @@ namespace LabGuard.Uninstall
                 }
             }
 
-            if (!quiet && MessageBox.Show(
+            // 延时确认：卸载不可逆，按钮倒计时（默认 10 秒，可在设置第 0 组改；0 = 不等待）
+            if (!quiet && !CountdownDialog.Confirm(
+                    "卸载LabGuard",
                     "将卸载【LabGuard】并还原所有被改动的设置：\r\n\r\n" +
                     "· 恢复 USB 存储设备、hosts、浏览器策略、注册表策略、壁纸、IFEO、安全模式限制\r\n" +
                     "· 删除开机启动项、守护服务、快捷方式、控制面板卸载项\r\n\r\n" +
                     "卸载后建议重启电脑。确定继续吗？",
-                    "卸载LabGuard", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK)
+                    config.ConfirmDelaySeconds))
             {
                 return;
             }

@@ -13,6 +13,11 @@ namespace LabGuard.Core.Config
         /// 默认 On：学生按什么都没反应；老师按 Ctrl+Alt+Del 可取回输入（Windows 保留通道）。
         /// </summary>
         public string InputHardLock { get; set; } = "On";
+        /// <summary>
+        /// 危险操作（卸载 / 退出监控）确认前的等待秒数：按钮显示倒计时，期间不可点。
+        /// 0 = 不等待（不推荐）。默认 10 秒。
+        /// </summary>
+        public int ConfirmDelaySeconds { get; set; } = 10;
         /// <summary>已安装/已启用管控的总开关；关闭后各 Guard 不再纠正系统状态。</summary>
         public bool Enabled { get; set; } = true;
         /// <summary>退出/暂停后自动恢复管控的时间（分钟），0 = 不自动恢复。</summary>
