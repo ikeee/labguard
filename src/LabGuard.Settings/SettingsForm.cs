@@ -14,7 +14,7 @@ namespace LabGuard.Settings
 {
     /// <summary>
     /// 设置程序：主体是 <see cref="SettingsPanel"/>（左侧分组导航 + 搜索 + 只看已改动 + 改动计数，
-    /// 内容由 <see cref="LabGuard.Core.Settings.SettingsCatalog"/> 驱动，共 14 组 / 95 项）。
+    /// 内容由 <see cref="LabGuard.Core.Settings.SettingsCatalog"/> 驱动，共 14 组 / 96 项）。
     /// 底部另有口令、导出/导入/恢复默认/保存。
     /// </summary>
     public class SettingsForm : Form

@@ -180,6 +180,9 @@ namespace LabGuard.SelfTest
             Check("默认加固课堂软件的键（频道/自动登录参数）",
                 aclCfg.Keys.Contains(@"HKEY_LOCAL_MACHINE\SOFTWARE\TopDomain\e-Learning Class\Student"));
             Check("「连管理员也锁」默认关闭", !aclCfg.DenyAdminsWrite);
+            Check("上网入口浏览器默认留空（= 自动探测注册表/App Paths/常见路径）",
+                new GuardConfig().Browser.LauncherBrowser == "");
+            Check("危险操作确认默认等 10 秒（0 = 不等）", new GuardConfig().ConfirmDelaySeconds == 10);
             foreach (string k in aclCfg.Keys)
             {
                 Check("键路径写法合法：" + k,

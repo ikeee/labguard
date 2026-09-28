@@ -259,6 +259,10 @@ namespace LabGuard.Core.Settings
             list.Add(Bool("8、浏览器管控", "Browser.HijackShortcuts", "接管浏览器快捷方式（指向本程序上网入口）",
                 "默认关闭；开启后桌面/开始菜单里的浏览器快捷方式会先经过 LabGuard.Launcher",
                 c => c.Browser.HijackShortcuts, (c, v) => c.Browser.HijackShortcuts = (bool)v));
+            list.Add(Path("8、浏览器管控", "Browser.LauncherBrowser", "上网入口用哪个浏览器（留空 = 自动探测）",
+                "点浏览器快捷方式时用哪个浏览器打开；留空则依次探测：注册表里的默认浏览器 → App Paths → 常见安装路径。" +
+                "填了但文件不存在时会自动退回探测（不会因为路径写错就打不开）。",
+                "可执行文件 |*.exe", c => c.Browser.LauncherBrowser, (c, v) => c.Browser.LauncherBrowser = (string)v));
 
             // ============================================================ 9 任务栏/系统工具
             list.Add(Bool("9、任务栏与系统工具", "Shell.Enabled", "启用本组策略（总开关）", null,

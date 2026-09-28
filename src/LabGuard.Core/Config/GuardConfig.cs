@@ -224,6 +224,11 @@ namespace LabGuard.Core.Config
         public string Homepage { get; set; } = "";
         /// <summary>用 LabGuard.Launcher 替换浏览器快捷方式（默认关；开启后点浏览器会先经过本程序）。</summary>
         public bool HijackShortcuts { get; set; } = false;
+        /// <summary>
+        /// 上网入口用哪个浏览器（完整 exe 路径）；留空 = 自动探测
+        /// （注册表里的默认浏览器 → App Paths → 常见安装路径）。
+        /// </summary>
+        public string LauncherBrowser { get; set; } = "";
     }
 
     public class ShellSettings
