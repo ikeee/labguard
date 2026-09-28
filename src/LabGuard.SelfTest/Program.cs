@@ -157,6 +157,23 @@ namespace LabGuard.SelfTest
             LabGuard.Core.Interop.InputLock.Disengage();            // 不应抛异常
             Check("Disengage 在未上锁时也安全", true);
 
+            Console.WriteLine("[5.3] 断网即时归因（遮罩/日志要说清检测到什么）");
+            Check("网卡消失 → 说清了网卡被禁用或拔掉",
+                NetworkGuard.DescribeDown(false, false, null).Contains("消失"));
+            Check("网卡 Down → 说清网线被拔掉/网卡被禁用",
+                NetworkGuard.DescribeDown(true, false, null).Contains("网卡已断开"));
+            Check("IP 清空 → 说清没拿到地址",
+                NetworkGuard.DescribeDown(true, true, "").Contains("IP 已被清空"));
+            Check("0.0.0.0 → 说清没拿到地址",
+                NetworkGuard.DescribeDown(true, true, "0.0.0.0").Contains("IP 已被清空"));
+            Check("169.254.* → 说清网线未接好/DHCP 不可达",
+                NetworkGuard.DescribeDown(true, true, "169.254.10.20").Contains("169.254"));
+            Check("四种原因互不相同",
+                new[] { NetworkGuard.DescribeDown(false, false, null),
+                        NetworkGuard.DescribeDown(true, false, null),
+                        NetworkGuard.DescribeDown(true, true, "0.0.0.0"),
+                        NetworkGuard.DescribeDown(true, true, "169.254.1.2") }.Distinct().Count() == 4);
+
             Console.WriteLine("[5.2] 注册表权限加固（P3）");
             var aclCfg = new GuardConfig().RegistryAcl;
             Check("默认加固 LabGuard 自己的键", aclCfg.Keys.Contains(@"HKEY_LOCAL_MACHINE\SOFTWARE\LabGuard"));

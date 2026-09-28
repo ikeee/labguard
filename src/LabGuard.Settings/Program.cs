@@ -48,7 +48,8 @@ namespace LabGuard.Settings
                     // 截图模式不锁输入（否则渲染这几百毫秒里会把操作者的键鼠一起锁住）
                     mask.InputLockMode = LabGuard.Core.Interop.InputLock.ModeOff;
                     LabGuard.Core.UI.UiCapture.ShowOffScreen(mask);
-                    mask.ShowMask("机位 1001", "网络已断开", "请插回网线或启用网络连接",
+                    mask.ShowMask("机位 1001", "网络已断开",
+                        "检测到：以太网 网卡已断开（网线被拔掉，或网卡被禁用）\r\n请插回网线或启用网络连接",
                         string.IsNullOrEmpty(config.PasswordHash) ? PasswordHasher.Create("a1b2c3") : config.PasswordHash,
                         true, true,
                         () => "已断开 0 分 42 秒 · 插回网线后 10 秒内自动恢复",

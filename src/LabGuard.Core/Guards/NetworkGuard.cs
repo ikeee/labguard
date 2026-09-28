@@ -46,7 +46,21 @@ namespace LabGuard.Core.Guards
         private bool _maskShown;
         private bool _soundDone;
         private bool _pausedByTeacher;
+        private string _downReason = "";
         public bool PausedByTeacher => _pausedByTeacher;
+
+        /// <summary>
+        /// 即时归因：把"判据网卡为什么算断开"翻译成给学生看的**具体原因**，
+        /// 而不是只说一句"违规"——经验上，写明检测到什么能明显减少重复违规。
+        /// </summary>
+        public static string DescribeDown(bool nicExists, bool wasUp, string ip)
+        {
+            if (!nicExists) return "判据网卡已消失（网卡被禁用或被拔掉）";
+            if (!wasUp) return "网卡已断开（网线被拔掉，或网卡被禁用）";
+            if (string.IsNullOrEmpty(ip) || ip == "0.0.0.0") return "IP 已被清空（没拿到地址）";
+            if (ip.StartsWith("169.254.")) return "只拿到 169.254.* 自动地址（网线未接好，或 DHCP 不可达）";
+            return "网络不可用";
+        }
 
         protected override void OnStart()
         {
@@ -85,13 +99,23 @@ namespace LabGuard.Core.Guards
             }
 
             int watchedTotal = 0, watchedDown = 0;
+            _downReason = "";
             foreach (Baseline baseLine in _baseline)
             {
                 if (!baseLine.Watched) continue;
                 watchedTotal++;
                 Baseline now;
                 bool down = !current.TryGetValue(baseLine.Name, out now) || IsDisconnected(now.Ip, now.WasUp);
-                if (down) watchedDown++;
+                if (down)
+                {
+                    watchedDown++;
+                    if (_downReason.Length == 0)
+                    {
+                        bool exists = current.ContainsKey(baseLine.Name);
+                        _downReason = baseLine.Name + " " +
+                            DescribeDown(exists, exists && now != null && now.WasUp, exists && now != null ? now.Ip : null);
+                    }
+                }
             }
 
             bool allDown = watchedTotal > 0 && watchedDown == watchedTotal;
@@ -105,7 +129,7 @@ namespace LabGuard.Core.Guards
 
                 if (elapsed >= DisconnectConfirmSeconds)
                 {
-                    Context.Report(Name, "检测到本机网络已断开：请插回网线或启用网络连接。",
+                    Context.Report(Name, "检测到本机网络已断开（" + _downReason + "）：请插回网线或启用网络连接。",
                         HostAction(), string.Join("/", _watchedNames) + " 已断开 " + (int)elapsed + " 秒");
                     ShowMaskIfNeeded(_unpluggedSince);
                     MaybeSound(_unpluggedSince);
@@ -178,7 +202,7 @@ namespace LabGuard.Core.Guards
             Context.Alert.ShowDisconnectMask(
                 machineNumber,
                 "网络已断开",
-                "请插回网线或启用网络连接",
+                "检测到：" + _downReason + "\r\n请插回网线或启用网络连接",
                 Context.Config.PasswordHash,
                 randomWallpaper,
                 Context.Config.Network.DisconnectMaskShowElapsed,
