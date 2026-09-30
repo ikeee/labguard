@@ -59,18 +59,35 @@ namespace LabGuard.Core.Config
     public class ClassroomSettings
     {
         public bool Enabled { get; set; } = true;
-        /// <summary>电子教室客户端进程名（极域 StudentMain.exe / 红蜘蛛 REDAgent.exe / 锐捷 ClassMangerApp.exe）。</summary>
-        public List<string> ProcessNames { get; set; } = new List<string> { "StudentMain.exe", "REDAgent.exe", "ClassMangerApp.exe" };
-        /// <summary>电子教室客户端完整路径（设置程序里可手动选择；留空则自动探测）。</summary>
+        /// <summary>
+        /// 需要盯住的课堂软件进程名（**存在就防挂起，不存在不报告**——避免"广播时才启动"的进程每轮误报）。
+        /// 极域 StudentMain / 红蜘蛛 REDAgent / 锐捷 ClassMangerApp / 噢易 MultiClient、Ctsc_Multi、VoiClient、TrayClient。
+        /// </summary>
+        public List<string> ProcessNames { get; set; } = new List<string>
+        {
+            "StudentMain.exe", "REDAgent.exe", "ClassMangerApp.exe",
+            "MultiClient.exe", "Ctsc_Multi.exe", "VoiClient.exe", "TrayClient.exe"
+        };
+        /// <summary>关键客户端完整路径（必须常驻：丢了就报告并重新拉起；留空则自动探测）。</summary>
         public string MainExecutable { get; set; } = "";
-        /// <summary>极域的两个关键服务名。</summary>
-        public List<string> RequiredServices { get; set; } = new List<string> { "TopDomainClient", "TopDomainClientHelper" };
+        /// <summary>必须运行的服务（被停就重启）。极域两个 + 噢易教学系统的 MMPC、云桌面的 VoiClient。</summary>
+        public List<string> RequiredServices { get; set; } = new List<string>
+        {
+            "TopDomainClient", "TopDomainClientHelper", "MMPC", "VoiClient"
+        };
         /// <summary>检测到被挂起后是否强制恢复。</summary>
         public bool ResumeWhenSuspended { get; set; } = true;
         /// <summary>检测到被终止后是否重新拉起。</summary>
         public bool RelaunchWhenKilled { get; set; } = true;
         /// <summary>是否监控极域的频道/自动登录参数。</summary>
         public bool GuardELearningParameters { get; set; } = true;
+        /// <summary>是否监控噢易 VOI 云桌面的服务器地址（gtserver）。</summary>
+        public bool GuardVoiParameters { get; set; } = true;
+        /// <summary>
+        /// 云桌面服务器地址的期望值（如 10.28.254.254）。**留空 = 只检查合法性、不猜着写**；
+        /// 填了就严格还原（适合地址固定的机房）。
+        /// </summary>
+        public string VoiGtServer { get; set; } = "";
     }
 
     public class NetworkSettings

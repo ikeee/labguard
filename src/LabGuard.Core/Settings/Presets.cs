@@ -96,6 +96,7 @@ namespace LabGuard.Core.Settings
             c.Classroom.ResumeWhenSuspended = true;
             c.Classroom.RelaunchWhenKilled = true;
             c.Classroom.GuardELearningParameters = true;
+            c.Classroom.GuardVoiParameters = true;
             c.Network.Enabled = true;
             c.Network.DetectDisconnected = true;
             c.Network.RestoreOriginalIp = true;

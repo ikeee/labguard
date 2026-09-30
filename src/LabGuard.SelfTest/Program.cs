@@ -38,6 +38,7 @@ namespace LabGuard.SelfTest
             TestPassword();
             TestHosts();
             TestBlocklists();
+            TestClassroomProducts();
             TestIfeoNaming();
             TestDisconnectRule();
             TestDnsRule();
@@ -59,6 +60,9 @@ namespace LabGuard.SelfTest
         private static int RunSingleGuard(string typeName, string[] args)
         {
             Log.MinLevel = LogLevel.Debug;
+            // 单模块调试也必须是"干跑"：否则 --only 一跑就会真的改注册表/停服务，
+            // 与自检"全程不修改系统"的承诺矛盾（改动只写审计，不落盘）。
+            Log.DryRun = true;
             var cfg = new GuardConfig { PasswordHash = "x", StartDelaySeconds = 0 };
             var ctx = new GuardContext(cfg, AppDomain.CurrentDomain.BaseDirectory, null);
             IGuard guard = null;
@@ -67,7 +71,7 @@ namespace LabGuard.SelfTest
                 if (t.Name == typeName) guard = (IGuard)Activator.CreateInstance(t);
             }
             if (guard == null) { Console.WriteLine("未找到 Guard：" + typeName); return 2; }
-            Console.WriteLine("单独启动 " + typeName);
+            Console.WriteLine("单独启动 " + typeName + "（干跑模式：只检测与记录，不改系统）");
             guard.Start(ctx);
             Console.WriteLine("启动完成：" + guard.Status);
             int secondsIndex = Array.IndexOf(args ?? new string[0], "--seconds");
@@ -122,6 +126,63 @@ namespace LabGuard.SelfTest
             Check("含游戏样例", DefaultBlocklists.Games.Contains("winmine"));
             Check("域名清单 >= 25 条（可自行增删）", DefaultBlocklists.Domains.Length >= 25, DefaultBlocklists.Domains.Length + " 条");
             Check("电子教室提示 >= 3 个", DefaultBlocklists.ClassroomHints.Length >= 3);
+        }
+
+        /// <summary>
+        /// 课堂软件识别（多产品：极域 / 红蜘蛛 / 锐捷 / 噢易 Os-Easy）与云桌面参数判定。
+        /// 噢易这类"母盘/镜像装机"的产品不写卸载记录，识别只能靠 进程 / 常见路径 / 服务目录，
+        /// 所以这里把产品判定、服务路径解析、默认保护清单都钉住，避免以后改动悄悄退化。
+        /// </summary>
+        private static void TestClassroomProducts()
+        {
+            Console.WriteLine("[3.1] 课堂软件识别（噢易 Os-Easy / 极域 / 红蜘蛛 / 锐捷）");
+            Check("噢易教学系统（Student.exe 所在目录）",
+                ClassroomDetector.GuessProduct(@"C:\Program Files (x86)\Os-Easy\os-easy multicast teaching system\Student.exe").Contains("噢易"));
+            Check("噢易 VOI 云桌面客户端",
+                ClassroomDetector.GuessProduct(@"C:\Program Files\VOI\Platform\client\VoiClient.exe").Contains("VOI"));
+            Check("噢易硬件虚拟化",
+                ClassroomDetector.GuessProduct(@"C:\Program Files\OSEasy\HardVirtual\RunClient.exe").Contains("硬件虚拟化"));
+            Check("极域 / 红蜘蛛 / 锐捷仍然认得出来",
+                ClassroomDetector.GuessProduct(@"C:\Program Files (x86)\TopDomain\e-Learning Class\Student\StudentMain.exe").Contains("极域") &&
+                ClassroomDetector.GuessProduct(@"C:\Program Files (x86)\3000soft\Red Spider\REDAgent.exe").Contains("红蜘蛛") &&
+                ClassroomDetector.GuessProduct(@"E:\Program Files (x86)\ClassManager\ClassMangerApp.exe").Contains("锐捷"));
+
+            // 服务 ImagePath：噢易机房唯一可靠的安装目录线索
+            Check("带引号 + 参数的服务路径能取到目录",
+                ClassroomDetector.ServiceDirectory("\"C:\\Program Files\\OSEasy\\HardVirtual\\RunClient.exe\" /service") == @"C:\Program Files\OSEasy\HardVirtual");
+            Check("不带引号的服务路径能取到目录",
+                ClassroomDetector.ServiceDirectory(@"C:\Program Files\VOI\Platform\client\diskless_service.exe") == @"C:\Program Files\VOI\Platform\client");
+            Check("没有路径的服务名 = 不瞎猜（返回 null）", ClassroomDetector.ServiceDirectory("MMPC") == null);
+
+            var cfg = new GuardConfig();
+            Check("默认盯住噢易学生端 / 云桌面进程",
+                cfg.Classroom.ProcessNames.Contains("MultiClient.exe") &&
+                cfg.Classroom.ProcessNames.Contains("Ctsc_Multi.exe") &&
+                cfg.Classroom.ProcessNames.Contains("VoiClient.exe") &&
+                cfg.Classroom.ProcessNames.Contains("TrayClient.exe"));
+            Check("默认重启噢易教学系统 / 云桌面的服务",
+                cfg.Classroom.RequiredServices.Contains("MMPC") && cfg.Classroom.RequiredServices.Contains("VoiClient"));
+            Check("常见路径提示里有噢易学生端",
+                DefaultBlocklists.ClassroomHints.Any(h => h.Value.IndexOf("Os-Easy", StringComparison.OrdinalIgnoreCase) >= 0));
+            Check("服务清单里有噢易的服务", DefaultBlocklists.ClassroomServices.Any(s => s.Key == "MMPC"));
+
+            Console.WriteLine("[3.2] 云桌面服务器地址（gtserver）判定");
+            Check("被清空 = 需要处置", ClassroomGuard.VoiServerNeedsFix("", ""));
+            Check("被改成非法值 = 需要处置", ClassroomGuard.VoiServerNeedsFix("not a ip!", ""));
+            Check("没配期望值 → 合法 IP 就放过（不瞎写）", !ClassroomGuard.VoiServerNeedsFix("10.28.254.254", ""));
+            Check("没配期望值 → 合法主机名也放过", !ClassroomGuard.VoiServerNeedsFix("voi.lab.local", ""));
+            Check("配了期望值 → 被改就要求写回", ClassroomGuard.VoiServerNeedsFix("192.168.1.1", "10.28.254.254"));
+            Check("配了期望值 → 一致就放过", !ClassroomGuard.VoiServerNeedsFix("10.28.254.254", "10.28.254.254"));
+            Check("越界 IPv4 不算合法", !ClassroomGuard.LooksLikeHostOrIp("999.1.1.1"));
+
+            Console.WriteLine("      本机实际识别结果（换机房也不会失败，仅作参考）：");
+            var detected = ClassroomDetector.DetectAll();
+            if (detected.Count == 0) Console.WriteLine("        未识别到课堂软件（该机房可能没装，或需在设置里手动填写）");
+            foreach (ClassroomCandidate c in detected) Console.WriteLine("        " + c);
+            string why;
+            ClassroomCandidate bestPick = ClassroomDetector.DetectBest(out why);
+            Check("首选结果不会是教师端（否则会错误地拉起教师端）",
+                bestPick == null || !string.Equals(bestPick.ProcessName, "Teacher.exe", StringComparison.OrdinalIgnoreCase), why);
         }
 
         private static void TestIfeoNaming()

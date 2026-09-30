@@ -67,13 +67,17 @@ namespace LabGuard.Core.Settings
             // ============================================================ 1 电子教室
             list.Add(Bool("1、电子教室保护", "Classroom.Enabled", "启用电子教室保护（本组总开关）", null,
                 c => c.Classroom.Enabled, (c, v) => c.Classroom.Enabled = (bool)v));
-            list.Add(Path("1、电子教室保护", "Classroom.MainExecutable", "电子教室学生端程序路径",
-                "极域 StudentMain.exe / 红蜘蛛 REDAgent.exe / 锐捷 ClassMangerApp.exe；留空 = 自动探测",
+            list.Add(Path("1、电子教室保护", "Classroom.MainExecutable", "电子教室学生端程序路径（关键客户端）",
+                "极域 StudentMain.exe / 红蜘蛛 REDAgent.exe / 锐捷 ClassMangerApp.exe / 噢易 Student.exe；" +
+                "留空 = 自动探测。这一项是「必须常驻」的那个：丢了就报告并重新拉起。",
                 "exe文件 |*.exe", c => c.Classroom.MainExecutable, (c, v) => c.Classroom.MainExecutable = (string)v));
-            list.Add(List("1、电子教室保护", "Classroom.ProcessNames", "学生端进程名（一行一个）",
-                "找不到进程时按这些名字找（.exe 可省略）", c => c.Classroom.ProcessNames, (c, v) => c.Classroom.ProcessNames = (List<string>)v));
+            list.Add(List("1、电子教室保护", "Classroom.ProcessNames", "还要盯住的进程名（一行一个）",
+                "存在就防挂起；不存在不报告（广播类进程是按需启动的，不该每轮都报警）。" +
+                "噢易机房默认已带 MultiClient / Ctsc_Multi / VoiClient / TrayClient。",
+                c => c.Classroom.ProcessNames, (c, v) => c.Classroom.ProcessNames = (List<string>)v));
             list.Add(List("1、电子教室保护", "Classroom.RequiredServices", "必须运行的服务（一行一个）",
-                "极域默认 TopDomainClient / TopDomainClientHelper；留空 = 不检查服务",
+                "被停就重启。极域 TopDomainClient / TopDomainClientHelper；噢易教学系统 MMPC；云桌面 VoiClient。" +
+                "无盘机房若还停 DiskLessService / RunClient，也一并加进来。留空 = 不检查服务",
                 c => c.Classroom.RequiredServices, (c, v) => c.Classroom.RequiredServices = (List<string>)v));
             list.Add(Bool("1、电子教室保护", "Classroom.ResumeWhenSuspended", "被挂起时强制恢复",
                 "「课堂软件的进程被挂起！已自动恢复。」的处置（NtResumeProcess）",
@@ -83,6 +87,12 @@ namespace LabGuard.Core.Settings
             list.Add(Bool("1、电子教室保护", "Classroom.GuardELearningParameters", "守护极域频道/自动登录参数",
                 "监控 SOFTWARE\\TopDomain\\e-Learning Class\\Student（ChannelId / AutoLogin）",
                 c => c.Classroom.GuardELearningParameters, (c, v) => c.Classroom.GuardELearningParameters = (bool)v));
+            list.Add(Bool("1、电子教室保护", "Classroom.GuardVoiParameters", "守护噢易云桌面服务器地址",
+                "监控 SOFTWARE\\VoiClient\\client\\gtserver。学生改掉/清空这个地址，云桌面就连不上服务器（本机不再还原）",
+                c => c.Classroom.GuardVoiParameters, (c, v) => c.Classroom.GuardVoiParameters = (bool)v));
+            list.Add(Text("1、电子教室保护", "Classroom.VoiGtServer", "云桌面服务器地址的期望值（可留空）",
+                "填了（如 10.28.254.254）= 被改就严格写回；留空 = 只在明显非法（空/不是 IP 或主机名）时报告，不猜着写",
+                c => c.Classroom.VoiGtServer, (c, v) => c.Classroom.VoiGtServer = (string)v));
 
             // ============================================================ 2 网络与防火墙
             list.Add(Bool("2、网络与防火墙", "Network.Enabled", "启用网络守护（本组总开关）", null,

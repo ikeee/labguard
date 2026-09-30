@@ -105,7 +105,33 @@ namespace LabGuard.Core.Data
         {
             new KeyValuePair<string, string>("REDAgent.exe", @"C:\Program Files (x86)\3000soft\Red Spider\REDAgent.exe"),
             new KeyValuePair<string, string>("StudentMain.exe", @"C:\Program Files (x86)\TopDomain\e-Learning Class\Student\StudentMain.exe"),
-            new KeyValuePair<string, string>("ClassMangerApp.exe", @"E:\Program Files (x86)\ClassManager\ClassMangerApp.exe")
+            new KeyValuePair<string, string>("StudentMain.exe", @"D:\Program Files (x86)\TopDomain\e-Learning Class\Student\StudentMain.exe"),
+            new KeyValuePair<string, string>("ClassMangerApp.exe", @"E:\Program Files (x86)\ClassManager\ClassMangerApp.exe"),
+            // 噢易（Os-Easy）多媒体教学系统：学生端 Student.exe，教师端 Teacher.exe（同一目录）
+            new KeyValuePair<string, string>("Student.exe", @"C:\Program Files (x86)\Os-Easy\os-easy multicast teaching system\Student.exe"),
+            new KeyValuePair<string, string>("Student.exe", @"D:\Program Files (x86)\Os-Easy\os-easy multicast teaching system\Student.exe"),
+            new KeyValuePair<string, string>("Student.exe", @"C:\Program Files\Os-Easy\os-easy multicast teaching system\Student.exe"),
+            // 噢易 VOI 云桌面客户端（无盘/云桌面机房）
+            new KeyValuePair<string, string>("VoiClient.exe", @"C:\Program Files\VOI\Platform\client\VoiClient.exe"),
+            new KeyValuePair<string, string>("VoiClient.exe", @"D:\Program Files\VOI\Platform\client\VoiClient.exe")
+        };
+
+        /// <summary>
+        /// 课堂软件的关键服务（用于"服务被停就重启"，也可由服务路径反推安装目录）。
+        /// 键 = 服务名，值 = 该服务属于哪个产品（仅用于日志/界面说明）。
+        /// </summary>
+        public static readonly KeyValuePair<string, string>[] ClassroomServices =
+        {
+            // 极域电子教室
+            new KeyValuePair<string, string>("TopDomainClient", "极域电子教室"),
+            new KeyValuePair<string, string>("TopDomainClientHelper", "极域电子教室"),
+            // 噢易多媒体教学系统（学生机侧主服务）
+            new KeyValuePair<string, string>("MMPC", "噢易多媒体教学系统"),
+            // 噢易 VOI 云桌面客户端
+            new KeyValuePair<string, string>("VoiClient", "噢易 VOI 云桌面"),
+            new KeyValuePair<string, string>("DiskLessService", "噢易 VOI 云桌面"),
+            // 噢易硬件虚拟化（虚拟打包/硬件仿真，无盘机房靠它保持硬件指纹）
+            new KeyValuePair<string, string>("RunClient", "噢易硬件虚拟化")
         };
     }
 }
