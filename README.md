@@ -224,18 +224,33 @@ docs/screenshots/            界面截图（由程序 --screenshot 自己渲染�
 ```bat
 LabGuard.Settings.exe --screenshot D:\shots        :: 14 个设置分组
 LabGuard.Settings.exe --screenshot-mask D:\mask.png :: 断网全屏遮罩
+LabGuard.Settings.exe --screenshot-lock D:\lock.png :: 全屏锁定屏
 LabGuard.Installer.exe --screenshot D:\shots        :: 安装向导 6 页
 ```
 
-（三个开关都只渲染界面，**不改系统、不写配置、不安装**。）
+（这些开关都只渲染界面，**不改系统、不写配置、不安装**。）
+
+想在真机上先看一眼遮罩/锁屏长什么样，用 Agent 的预览开关（只显示几秒自动收尾，**不锁键鼠、不动网络**）：
+
+```bat
+LabGuard.Agent.exe --preview-mask 8    :: 断网全屏遮罩
+LabGuard.Agent.exe --preview-lock 8    :: 全屏锁定屏
+```
 
 ### 8.1 学生拔掉网线后：全屏遮罩
 
-6 张背景随机选一张，按任何键都退不出，插回网线 10 秒内自动恢复；没插回来则按设置响鸣（默认 60 秒后嘀嘀嘀 ×3）。
+纯深色底（可在设置里改成"随机底图"，**都只是遮罩自己画，不动系统壁纸**），按任何键都退不出，插回网线 10 秒内自动恢复；没插回来则按设置响鸣（默认 60 秒后嘀嘀嘀 ×3）。
 
 <img src="docs/screenshots/disconnect-mask.png" width="820" alt="断网全屏遮罩">
 
-### 8.2 一键安装程序（6 步向导）
+### 8.2 违规被改回时：全屏锁定屏
+
+键盘钩子只在上锁期间生效——**老师输密码解除后会自动卸载**（否则解锁了却没法 Alt+Tab 切窗口）。
+底部可直接输老师密码解除；造成锁定的条件恢复正常时也会自动解除。
+
+<img src="docs/screenshots/lock-screen.png" width="820" alt="全屏锁定屏">
+
+### 8.3 一键安装程序（6 步向导）
 
 <details>
 <summary><b>展开 6 个页面</b></summary>

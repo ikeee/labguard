@@ -68,6 +68,26 @@
    拔网线 → 20 秒确认 → 遮罩全屏 + `BlockInput` 硬锁 → 心跳正常（`[遮罩心跳] #1/#6/#11/…`，
    不再出现"心跳超时"）→ 插回网线 → **4 秒后自动解除**（`断网遮罩解除：网络已恢复` → `输入硬锁已解除`）。
 
+### 锁屏窗体：解锁后卸载全局键盘钩子 + 新增遮罩/锁屏的预览与截图开关
+
+1. **修掉锁屏的一个真 Bug：解锁后全局键盘钩子不卸载。**
+   `LockScreenForm.InstallHook()` 装的是**全局** `WH_KEYBOARD_LL`（`dwThreadId = 0`），
+   它会吞掉 Win、Alt+Tab、Alt+Esc、Alt+F4、Ctrl+Esc；但 `Dispose` 里**从来没有**
+   `UnhookWindowsHookEx`（对比 `DisconnectMaskForm` 是有卸的）。后果：老师输密码解除锁定后，
+   只要小助手还在跑，这些键**继续被吞**——"解锁了却没法切窗口"。
+   修法：抽出 `UninstallHook()`，在 `Unlock_AndClose()` 与 `Dispose()` 里都卸载，
+   并在 `ShowLock()` 里显式重装（`InstallHook()` 幂等），保证"多次上锁 → 解锁"循环都正确；
+   另加只读属性 `IsHookInstalled` 供诊断/断言。
+2. **新增两个"不动系统"的观察开关**（与既有 `--screenshot-mask` 对齐）：
+   - `LabGuard.Agent.exe --preview-lock [秒]`：真机上先看一眼锁定屏；**不锁键鼠、不装键盘钩子**，
+     条件到点自动满足后自行解除，并把结果打成一行结论
+     （`看门狗定时器触发 N 次，已按条件自动解除；键盘钩子已卸载（PASS）`），退出码 0/1 便于脚本判定。
+   - `LabGuard.Settings.exe --screenshot-lock <文件>`：渲染锁定屏，用于文档配图。
+3. **实测**：`--preview-lock 5` → `RC=0`，`看门狗定时器触发 2 次，已按条件自动解除；键盘钩子已卸载（PASS）`
+   （定时器真的在走 = 线程归属修复对锁屏同样生效；钩子确实卸掉 = 上述 Bug 已修）。
+   文档配图同步重出：`docs/screenshots/disconnect-mask.png` 改为纯深色版，
+   新增 `docs/screenshots/lock-screen.png`；README 第 8 节补上两个预览开关与锁屏小节。
+
 ## v0.04（2026-09-29）
 
 ### 借鉴原版审计成果的三项改进（P1）

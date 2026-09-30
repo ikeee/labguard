@@ -77,6 +77,44 @@ namespace LabGuard.Agent
                 return;
             }
 
+            // --preview-lock [秒]：预览"全屏锁定屏"长什么样（只显示几秒，条件到点自动满足后解除；不锁键鼠）
+            if (HasArg(args, "--preview-lock"))
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                int seconds = 8;
+                int idx = Array.IndexOf(args, "--preview-lock");
+                if (args.Length > idx + 1) int.TryParse(args[idx + 1], out seconds);
+                DateTime deadline = DateTime.Now.AddSeconds(Math.Max(3, seconds));
+                var cfg = ConfigStore.Load();
+
+                int ticks = 0;      // 看门狗定时器实际触发次数：验证"定时器真的在走"（线程归属修复的核心）
+                var lockForm = new LabGuard.Core.UI.LockScreenForm(
+                    string.IsNullOrEmpty(cfg.PasswordHash) ? PasswordHasher.Create("a1b2c3") : cfg.PasswordHash);
+                lockForm.InputLockMode = LabGuard.Core.Interop.InputLock.ModeOff;   // 预览不锁键鼠，随时可退出
+                lockForm.ShowLock("已锁定（预览）", "检测到违规：这是一条示例原因。\r\n条件到点会自动满足，无需输密码。",
+                    false, () => { ticks++; return DateTime.Now >= deadline; });
+
+                while (DateTime.Now < deadline.AddSeconds(5))
+                {
+                    Application.DoEvents();
+                    System.Threading.Thread.Sleep(50);
+                    if (!lockForm.Visible) break;   // 已自动解除，提前收工
+                }
+
+                bool autoClosed = !lockForm.Visible;
+                bool hookGone = !lockForm.IsHookInstalled;      // 解锁后全局键盘钩子必须已卸掉
+                string verdict = "看门狗定时器触发 " + ticks + " 次，" +
+                    (autoClosed ? "已按条件自动解除" : "未能自动解除（FAIL：定时器没走）") + "；" +
+                    (hookGone ? "键盘钩子已卸载" : "键盘钩子仍在（FAIL：解锁后 Win/Alt+Tab 会被吞）") +
+                    ((autoClosed && ticks > 0 && hookGone) ? "（PASS）" : "（FAIL）");
+                Console.WriteLine("锁定屏预览结束：" + verdict);
+                Log.Info("[锁定屏预览] " + verdict);
+                lockForm.Dispose();
+                Environment.ExitCode = (autoClosed && ticks > 0 && hookGone) ? 0 : 1;
+                return;
+            }
+
             // 已配置密码时才允许单实例；未配置时也允许运行（只是不启用管控）
             bool created;
             using (var mutex = new Mutex(true, @"Global\LabGuard.Agent", out created))

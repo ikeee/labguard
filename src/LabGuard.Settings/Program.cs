@@ -68,6 +68,32 @@ namespace LabGuard.Settings
                 return;
             }
 
+            // --screenshot-lock <文件>：渲染「全屏锁定屏」界面
+            int lockIndex = Array.IndexOf(args ?? new string[0], "--screenshot-lock");
+            if (lockIndex >= 0)
+            {
+                string file = args.Length > lockIndex + 1 ? args[lockIndex + 1]
+                    : System.IO.Path.Combine(System.IO.Path.GetTempPath(), "labguard-lock.png");
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                using (var lockForm = new LabGuard.Core.UI.LockScreenForm(
+                    string.IsNullOrEmpty(config.PasswordHash) ? PasswordHasher.Create("a1b2c3") : config.PasswordHash))
+                {
+                    // 截图模式不锁输入、不锁键盘钩子（否则渲染这几百毫秒里会把操作者一起关住）
+                    lockForm.InputLockMode = LabGuard.Core.Interop.InputLock.ModeOff;
+                    LabGuard.Core.UI.UiCapture.ShowOffScreen(lockForm);
+                    lockForm.ShowLock("已锁定：设置被修改", "检测到违规：任务管理器被禁用项被改回。",
+                        false, () => false);
+                    Application.DoEvents();
+                    System.Threading.Thread.Sleep(600);
+                    Application.DoEvents();
+                    string ok = LabGuard.Core.UI.UiCapture.Save(lockForm, file);
+                    lockForm.Unlock_AndClose();
+                    Console.WriteLine(ok ?? "截图失败");
+                }
+                return;
+            }
+
 
             // 界面自检：不显示窗口，只构建一次并统计控件，验证"每个配置项都渲染出控件"
             if (Array.IndexOf(args ?? new string[0], "--selftest-ui") >= 0)

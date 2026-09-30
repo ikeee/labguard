@@ -40,6 +40,9 @@ namespace LabGuard.Core.UI
         /// <summary>锁屏期间是否硬锁鼠标键盘（InputLock.ModeOff / ModeOn），由 Agent 从配置注入。</summary>
         public string InputLockMode { get; set; } = InputLock.ModeOn;
 
+        /// <summary>诊断/自检用：全局键盘钩子当前是否已安装（解锁后应为 false）。</summary>
+        public bool IsHookInstalled { get { return _hook != IntPtr.Zero; } }
+
         public LockScreenForm(string passwordHash)
         {
             _passwordHash = passwordHash;
@@ -163,6 +166,7 @@ namespace LabGuard.Core.UI
             TopMost = true;
             Cursor.Hide();
             if (!_engaged) { InputLock.Engage(InputLockMode); _engaged = true; }
+            InstallHook();                 // 显式安装：解锁后会卸载，再次上锁必须能重装
             _watch.Start();
             _password.Focus();
         }
@@ -170,14 +174,37 @@ namespace LabGuard.Core.UI
         public void Unlock_AndClose()
         {
             _watch.Stop();
+            _resolved = null;
             if (_engaged) { InputLock.Disengage(); _engaged = false; }
+            UninstallHook();               // 必须卸掉全局键盘钩子（否则解锁后 Win/Alt+Tab 仍被吞）
             Cursor.Show();
             Hide();
         }
 
+        /// <summary>
+        /// 卸载全局键盘钩子。
+        /// <para>
+        /// 为什么必须在解锁时卸：<see cref="InstallHook"/> 装的是**全局** WH_KEYBOARD_LL
+        /// （dwThreadId = 0），它会吞掉 Win、Alt+Tab、Alt+Esc、Alt+F4、Ctrl+Esc；
+        /// 若只在进程退出时才消失，**老师输密码解锁后这些键仍会被吞掉**（只要小助手还在跑），
+        /// 变成"解锁了却没法切窗口"的新麻烦。
+        /// </para>
+        /// </summary>
+        private void UninstallHook()
+        {
+            if (_hook == IntPtr.Zero) return;
+            try { NativeMethods.UnhookWindowsHookEx(_hook); } catch { }
+            _hook = IntPtr.Zero;
+            _proc = null;
+        }
+
         protected override void Dispose(bool disposing)
         {
-            if (disposing && _engaged) { InputLock.Disengage(); _engaged = false; }
+            if (disposing)
+            {
+                if (_engaged) { InputLock.Disengage(); _engaged = false; }
+                UninstallHook();
+            }
             base.Dispose(disposing);
         }
 
