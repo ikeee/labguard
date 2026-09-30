@@ -225,13 +225,17 @@ namespace LabGuard.Agent
                 Log.Info("[无界面模式] " + title + "：" + text);
                 return;
             }
+            // 气泡常在 Guard 的轮询线程（线程池）上被调用；NotifyIcon 本身对跨线程是"能跑但不保证"，
+            // 正常路径不必每次记两条日志，只在异常时留痕（诊断时可开 --dry-run 看到线程号）。
+            Log.Debug("[气泡] 开始（线程 " + System.Threading.Thread.CurrentThread.ManagedThreadId + "）：" + title);
             try
             {
                 _tray.BalloonTipTitle = title;
                 _tray.BalloonTipText = text;
                 _tray.ShowBalloonTip(4000);
+                Log.Debug("[气泡] 结束");
             }
-            catch { }
+            catch (Exception ex) { Log.Warn("[气泡] 异常：" + ex.Message); }
         }
 
         // ------------------------------------------------------------------ ILockScreen

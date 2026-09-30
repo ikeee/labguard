@@ -5,6 +5,7 @@ using System.Windows.Forms;
 using LabGuard.Core.Config;
 using LabGuard.Core.Guards;
 using LabGuard.Core.Interop;
+using LabGuard.Core.Logging;
 
 namespace LabGuard.Core.UI
 {
@@ -25,6 +26,14 @@ namespace LabGuard.Core.UI
         private IntPtr _hook = IntPtr.Zero;
         private bool _engaged;              // 是否已 Engage 输入硬锁（防重复上锁/重复解锁）
         private NativeMethods.LowLevelKeyboardProc _proc;
+
+        /// <summary>
+        /// 构造此窗体的线程（= UI 线程）的托管线程 ID。理由同 DisconnectMaskForm：
+        /// <c>Control.InvokeRequired</c> 在句柄未创建时返回 false，Guard 的线程池线程首次
+        /// 上锁就会把窗口建到没有消息循环的线程上（于是 <c>_watch</c> 永不走），
+        /// 必须用线程 ID 判断。
+        /// </summary>
+        private readonly int _uiThreadId;
 
         private const int WhKeyboardLl = 13;
 
@@ -101,6 +110,11 @@ namespace LabGuard.Core.UI
                     catch { }
                 }
             };
+
+            // 在 UI 线程上先把句柄建好，避免 Guard 线程池线程首次上锁时把窗口建错线程
+            _uiThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
+            try { _ = Handle; }
+            catch (Exception ex) { Log.Warn("锁屏窗体预先创建句柄失败（可能无桌面会话）：" + ex.Message); }
         }
 
         private static Rectangle PrimaryScreen() { return Screen.PrimaryScreen.Bounds; }
@@ -128,7 +142,12 @@ namespace LabGuard.Core.UI
 
         public void ShowLock(string title, string message, bool fakeBlueScreen, Func<bool> conditionResolved)
         {
-            if (InvokeRequired) { BeginInvoke(new Action(() => ShowLock(title, message, fakeBlueScreen, conditionResolved))); return; }
+            if (System.Threading.Thread.CurrentThread.ManagedThreadId != _uiThreadId)
+            {
+                try { BeginInvoke(new Action(() => ShowLock(title, message, fakeBlueScreen, conditionResolved))); }
+                catch { }
+                return;
+            }
             _titleLabel.Text = title;
             _messageLabel.Text = message + "\r\n\r\n（输入老师密码可解除锁定；恢复被破坏的设置后也会自动解除）";
             Color bg = fakeBlueScreen ? Color.FromArgb(0, 40, 120) : Color.FromArgb(10, 20, 60);

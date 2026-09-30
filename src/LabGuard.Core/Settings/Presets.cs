@@ -102,7 +102,7 @@ namespace LabGuard.Core.Settings
             c.Network.RestoreOriginalIp = true;
             c.Network.ForceFirewallOff = true;
             c.Network.DisconnectMask = true;
-            c.Network.DisconnectMaskBackground = "Wallpaper";
+            c.Network.DisconnectMaskBackground = "Plain";
             c.Network.DisconnectMaskShowElapsed = true;
             c.Network.DisconnectSoundAfterSeconds = 60;
             c.Network.DisconnectSoundTimes = 3;

@@ -43,6 +43,9 @@ namespace LabGuard.Settings
                     : System.IO.Path.Combine(System.IO.Path.GetTempPath(), "labguard-mask.png");
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
+                // 底图跟随当前配置，截图才和老师实际看到的（以及默认值）一致
+                bool maskWallpaper = !string.Equals(config.Network.DisconnectMaskBackground,
+                    "Plain", StringComparison.OrdinalIgnoreCase);
                 using (var mask = new LabGuard.Core.UI.DisconnectMaskForm())
                 {
                     // 截图模式不锁输入（否则渲染这几百毫秒里会把操作者的键鼠一起锁住）
@@ -51,7 +54,7 @@ namespace LabGuard.Settings
                     mask.ShowMask("机位 1001", "网络已断开",
                         "检测到：以太网 网卡已断开（网线被拔掉，或网卡被禁用）\r\n请插回网线或启用网络连接",
                         string.IsNullOrEmpty(config.PasswordHash) ? PasswordHasher.Create("a1b2c3") : config.PasswordHash,
-                        true, true,
+                        maskWallpaper, true,
                         () => "已断开 0 分 42 秒 · 插回网线后 10 秒内自动恢复",
                         () => false, () => { });
                     Application.DoEvents();
@@ -292,7 +295,7 @@ namespace LabGuard.Settings
             c.Classroom.Enabled = true;
             c.Network.DetectDisconnected = true;
             c.Network.DisconnectMask = true;
-            c.Network.DisconnectMaskBackground = "Wallpaper";
+            c.Network.DisconnectMaskBackground = "Plain";
             c.Network.DisconnectSoundAfterSeconds = 60;
             c.Network.DisconnectSoundTimes = 3;
             c.Network.LockOnViolation = false;

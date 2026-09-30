@@ -127,10 +127,10 @@ namespace LabGuard.Core.Settings
             list.Add(Bool("2、网络与防火墙", "Network.DisconnectMask", "断网时全屏遮罩（屏保式）",
                 "插回网线自动消失、不需要老师；老师连续按 5 次 Esc 输入密码可解除（解除后监控暂停）",
                 c => c.Network.DisconnectMask, (c, v) => c.Network.DisconnectMask = (bool)v));
-            list.Add(Choice("2、网络与防火墙", "Network.DisconnectMaskBackground", "遮罩背景",
-                "随机壁纸 = 从安装目录 wallpaper 里随机选一张；纯色 = 深色提示页",
+            list.Add(Choice("2、网络与防火墙", "Network.DisconnectMaskBackground", "遮罩底图",
+                "只决定遮罩这个窗口自己怎么画（默认纯深色）——两种都不动学生机的系统壁纸/桌面",
                 c => c.Network.DisconnectMaskBackground, (c, v) => c.Network.DisconnectMaskBackground = (string)v,
-                new[] { "随机壁纸", "纯色提示页" }, new[] { "Wallpaper", "Plain" }));
+                new[] { "纯深色遮罩", "随机底图" }, new[] { "Plain", "Wallpaper" }));
             list.Add(Bool("2、网络与防火墙", "Network.DisconnectMaskShowElapsed", "遮罩上显示已断开时长",
                 null, c => c.Network.DisconnectMaskShowElapsed,
                 (c, v) => c.Network.DisconnectMaskShowElapsed = (bool)v));

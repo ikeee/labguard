@@ -117,8 +117,11 @@ namespace LabGuard.Core.Config
         // ---------------- 断网遮罩（"屏保式"提示，插回网线自动消失） ----------------
         /// <summary>断网确认后弹出全屏遮罩。</summary>
         public bool DisconnectMask { get; set; } = true;
-        /// <summary>遮罩背景：Wallpaper = 从安装目录 wallpaper 里随机选一张；Plain = 纯色提示页。</summary>
-        public string DisconnectMaskBackground { get; set; } = "Wallpaper";
+        /// <summary>
+        /// 遮罩背景：Plain = 纯深色提示页（默认）；Wallpaper = 从安装目录 wallpaper 里随机选一张。
+        /// 注意：两种都只是**遮罩这个窗口自己怎么画**，与系统壁纸无关 —— 本程序从不修改学生机壁纸。
+        /// </summary>
+        public string DisconnectMaskBackground { get; set; } = "Plain";
         /// <summary>只监控这些网卡（填网卡名，一行一个；留空 = 自动选择联网网卡）。</summary>
         public List<string> WatchedInterfaces { get; set; } = new List<string>();
         /// <summary>

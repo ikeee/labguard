@@ -40,6 +40,34 @@
 > 把 `HKLM\SOFTWARE\VoiClient\client` 加进注册表加固清单并打开"连管理员也锁"，
 > 这样 `gtserver` 是根本改不动，轮询还原只作为第二层。
 
+### 断网遮罩改成纯深色（默认）+ 修掉"遮罩永不自动消失"
+
+1. **遮罩默认底图改为纯深色**（`Network.DisconnectMaskBackground` 默认 `Plain`）。
+   真机截图核对时发现：默认值 `Wallpaper` 会让遮罩铺一张安装目录里的"机房规范壁纸"，
+   看起来像**系统壁纸被换掉了**，容易误会。其实本程序从不修改学生机壁纸
+   （全代码无 `SPI_SETDESKWALLPAPER`，注册表 `HKCU\Control Panel\Desktop\Wallpaper` 全程未动），
+   但仍把默认值改成纯深色，界面文案也改成「纯深色遮罩 / 随机底图」并注明"只决定遮罩自己怎么画"。
+   预设、`--export-preset`、`docs/04` 一并同步。
+2. **修掉真机上的严重问题：遮罩弹出后永不自动消失。**
+   根因是**窗体的线程归属**，不是网络检测：
+   `GuardBase` 用 `System.Timers.Timer` 轮询，所以遮罩是**线程池线程**第一次调用的；
+   而 `Control.InvokeRequired` 在**句柄尚未创建**时会返回 `false`（.NET 源码里
+   `if (IsHandleCreated) {…} return false;`），于是 `Show()` 把窗口建到了那个线程池线程上——
+   该线程没有消息循环，`WM_TIMER` 与 `BeginInvoke` 全部不执行：
+
+   - 1 秒定时器不走 → `InputLock.KeepAlive()` 断供 → `BlockInput` 看门狗 10 秒后自动解锁
+     （日志：`输入硬锁心跳超时（界面可能已无响应）→ 主动解锁`）；
+   - 后台线程判定"网络已恢复"后，没人把结果落回界面 → **遮罩一直挂着**。
+
+   修法（`DisconnectMaskForm` / `LockScreenForm`）：
+   - 构造函数里**在 UI 线程上预创建句柄**（`_ = Handle;`），并记住 UI 线程 ID；
+   - 跨线程判断改用**线程 ID 比较**，不再信赖 `InvokeRequired`；
+   - 后台检测到恢复后**直接 `BeginInvoke` 回 UI 线程收尾**，自动消失不再依赖 `WM_TIMER`。
+   - 预创建句柄加了 try/catch，无桌面会话时只记日志、不把整个小助手带崩。
+3. **实测（本机 = 真实噢易机房学生机，正式安装到 `C:\Program Files\LabGuard`，服务 + 登录自启任务）**：
+   拔网线 → 20 秒确认 → 遮罩全屏 + `BlockInput` 硬锁 → 心跳正常（`[遮罩心跳] #1/#6/#11/…`，
+   不再出现"心跳超时"）→ 插回网线 → **4 秒后自动解除**（`断网遮罩解除：网络已恢复` → `输入硬锁已解除`）。
+
 ## v0.04（2026-09-29）
 
 ### 借鉴原版审计成果的三项改进（P1）
