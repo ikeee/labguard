@@ -18,6 +18,9 @@ namespace LabGuard.Core.UI
             Text = title;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;
+            // 置顶：本框常被用来盖在 TopMost 的全屏窗口（断网遮罩/锁定屏）之上，
+            // 不置顶就会被它们压住，出现"老师看不到输密码的窗口"。
+            TopMost = true;
             MaximizeBox = false;
             MinimizeBox = false;
             ClientSize = new Size(380, 150);

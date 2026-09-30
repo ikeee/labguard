@@ -218,6 +218,25 @@ namespace LabGuard.SelfTest
             LabGuard.Core.Interop.InputLock.Disengage();            // 不应抛异常
             Check("Disengage 在未上锁时也安全", true);
 
+            Console.WriteLine("[5.4] 「键鼠锁死 / 指针消失」的两道归一化（历史事故的回归防线）");
+            // ① InputLock 引用计数：界面都解除后必须回到 0，否则键鼠会一直动不了
+            Check("无人持锁时 HoldsCount = 0", LabGuard.Core.Interop.InputLock.HoldsCount == 0);
+            LabGuard.Core.Interop.InputLock.Disengage();
+            LabGuard.Core.Interop.InputLock.Disengage();
+            Check("未持锁时反复 Disengage 不会把计数压成负数",
+                LabGuard.Core.Interop.InputLock.HoldsCount == 0);
+            // ② CursorLock：底层 ShowCursor 带全局计数，必须"最多压一次、最多放一次"
+            LabGuard.Core.Interop.CursorLock.Hide();
+            LabGuard.Core.Interop.CursorLock.Hide();
+            LabGuard.Core.Interop.CursorLock.Hide();
+            Check("反复 Hide 只压一次（状态为已隐藏）", LabGuard.Core.Interop.CursorLock.IsHidden);
+            LabGuard.Core.Interop.CursorLock.Show();
+            LabGuard.Core.Interop.CursorLock.Show();
+            Check("反复 Show 只放一次（状态回到可见，指针不会永久消失）",
+                !LabGuard.Core.Interop.CursorLock.IsHidden);
+            Check("收尾后 CursorLock 回到可见态（不会把指针留在隐藏态）",
+                !LabGuard.Core.Interop.CursorLock.IsHidden);
+
             Console.WriteLine("[5.3] 断网即时归因（遮罩/日志要说清检测到什么）");
             Check("网卡消失 → 说清了网卡被禁用或拔掉",
                 NetworkGuard.DescribeDown(false, false, null).Contains("消失"));

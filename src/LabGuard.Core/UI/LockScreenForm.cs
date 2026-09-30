@@ -106,6 +106,9 @@ namespace LabGuard.Core.UI
             _watch = new Timer { Interval = 3000 };
             _watch.Tick += (s, e) =>
             {
+                // 兜底：窗体已隐藏（已解锁）就停表 —— 只要不再续心跳，
+                // InputLock 的 10 秒看门狗一定会把输入放开，不会把老师锁在机器外。
+                if (!Visible) { _watch.Stop(); return; }
                 InputLock.KeepAlive();
                 if (_resolved != null)
                 {
@@ -164,7 +167,7 @@ namespace LabGuard.Core.UI
             if (!Visible) Show();
             WindowState = FormWindowState.Maximized;
             TopMost = true;
-            Cursor.Hide();
+            CursorLock.Hide();
             if (!_engaged) { InputLock.Engage(InputLockMode); _engaged = true; }
             InstallHook();                 // 显式安装：解锁后会卸载，再次上锁必须能重装
             _watch.Start();
@@ -177,7 +180,7 @@ namespace LabGuard.Core.UI
             _resolved = null;
             if (_engaged) { InputLock.Disengage(); _engaged = false; }
             UninstallHook();               // 必须卸掉全局键盘钩子（否则解锁后 Win/Alt+Tab 仍被吞）
-            Cursor.Show();
+            CursorLock.Show();
             Hide();
         }
 

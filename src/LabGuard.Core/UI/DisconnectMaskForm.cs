@@ -117,6 +117,10 @@ namespace LabGuard.Core.UI
             {
                 try
                 {
+                    // 兜底第一句：遮罩已经解除（_closed）就立刻停表并**停止续心跳**。
+                    // 只要不再续心跳，InputLock 的 10 秒看门狗一定会把输入放开 ——
+                    // 这是"鼠标键盘锁死"这类事故的最后一道保险（见 AskTeacherPassword 的历史坑）。
+                    if (_closed) { _tick.Stop(); return; }
                     // 心跳第一句就供上：任何后续异常都不再让硬锁被误判为“界面已无响应”
                     InputLock.KeepAlive();
                     _tickCount++;
@@ -200,7 +204,7 @@ namespace LabGuard.Core.UI
             if (!Visible) Show();
             WindowState = FormWindowState.Maximized;
             TopMost = true;
-            Cursor.Hide();
+            CursorLock.Hide();
             _tick.Start();
             InstallHook();
             StartNetWatch();
@@ -367,20 +371,33 @@ namespace LabGuard.Core.UI
             // 老师要走解锁流程 → 先放掉输入硬锁，否则密码框根本打不进字
             // （学生拿不到这条路径：它要靠 5 次 Esc，而 Esc 会被遮罩吞掉/计数）
             if (_inputEngaged) { InputLock.Disengage(); _inputEngaged = false; }
-            Cursor.Show();
+            CursorLock.Show();
+            bool passed;
             using (var dlg = new PasswordDialog("LabGuard · 解除断网遮罩",
                        "输入小助手密码（解除后监控会暂停，避免马上又弹出）：", _passwordHash))
             {
-                if (dlg.ShowDialog() == DialogResult.OK)
-                {
-                    Log.Warn("老师用密码解除了断网遮罩");
-                    AutoClose("老师已用密码解除");
-                    try { _teacherUnlock?.Invoke(); } catch { }
-                    return;
-                }
+                // 两个都要：owner 让对话框永远压在遮罩（它是 TopMost）之上；TopMost 再兜一层。
+                // 只写 ShowDialog() 会出现"输密码的窗口被全屏遮罩盖住、老师找不到"。
+                dlg.TopMost = true;
+                passed = dlg.ShowDialog(this) == DialogResult.OK;
+            }
+            if (passed)
+            {
+                Log.Warn("老师用密码解除了断网遮罩");
+                AutoClose("老师已用密码解除");
+                try { _teacherUnlock?.Invoke(); } catch { }
+                return;
+            }
+            // 关键：对话框开着这段时间，遮罩可能已经自己解除了（学生把网线插回来了）。
+            // 此时若还按"取消 → 恢复上锁"的老逻辑走，就会变成
+            // **遮罩没了、键鼠却锁死**（而且 _tick 一直续心跳，看门狗永远不触发）。
+            if (_closed || !Visible)
+            {
+                Log.Info("[遮罩] 密码框取消时遮罩已自行解除，不再重新上锁");
+                return;
             }
             if (!_inputEngaged) { InputLock.Engage(InputLockMode); _inputEngaged = true; }
-            Cursor.Hide();
+            CursorLock.Hide();
             _tick.Start();
         }
 
@@ -393,29 +410,37 @@ namespace LabGuard.Core.UI
                 catch (Exception ex) { Log.Warn("[遮罩] 自动解除跨线程投递失败：" + ex.Message); }
                 return;
             }
-            if (_closed) return;
-            _closed = true;
+            if (!_closed)
+            {
+                _closed = true;
+                Log.Info("断网遮罩解除：" + reason);
+            }
+            // 收尾一律执行（全部幂等），不能在 _closed 时提前 return：
+            // 历史坑 —— 若某条路径（如"密码框开着时网络自行恢复"）已经把 _closed 置位，
+            // 而之后 AskTeacherPassword 又重启了 _tick，那些"提前 return"就会让定时器一直
+            // 续心跳，输入硬锁永远解不开。这里保证无论谁来、来几次，都收干净。
             StopNetWatch();
             _tick.Stop();
             if (_inputEngaged) { InputLock.Disengage(); _inputEngaged = false; }
-            Cursor.Show();
-            if (_hook != IntPtr.Zero)
-            {
-                try { NativeMethods.UnhookWindowsHookEx(_hook); } catch { }
-                _hook = IntPtr.Zero;
-            }
-            Log.Info("断网遮罩解除：" + reason);
+            CursorLock.Show();
+            UninstallHook();
             Hide();
+            Log.Info("[遮罩] 收尾完成（输入硬锁 holds=" + InputLock.HoldsCount + "，钩子=" +
+                     (_hook == IntPtr.Zero ? "已卸" : "仍装") + "）");
+        }
+
+        private void UninstallHook()
+        {
+            if (_hook == IntPtr.Zero) return;
+            try { NativeMethods.UnhookWindowsHookEx(_hook); } catch { }
+            _hook = IntPtr.Zero;
+            _proc = null;
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             if (!_closed) { e.Cancel = true; return; }   // 只能用"网络恢复/老师密码"关闭
-            if (_hook != IntPtr.Zero)
-            {
-                try { NativeMethods.UnhookWindowsHookEx(_hook); } catch { }
-                _hook = IntPtr.Zero;
-            }
+            UninstallHook();
             base.OnFormClosing(e);
         }
     }

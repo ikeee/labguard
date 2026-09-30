@@ -88,6 +88,39 @@
    文档配图同步重出：`docs/screenshots/disconnect-mask.png` 改为纯深色版，
    新增 `docs/screenshots/lock-screen.png`；README 第 8 节补上两个预览开关与锁屏小节。
 
+### 修掉老师解锁路径的两个真机 Bug（密码框被遮住 / 恢复后键鼠锁死）
+
+> 真机反馈："连续按 5 次 Esc 后，输密码的窗口没有在最前"、"接回网线后遮罩消失，但鼠标键盘都动不了"。
+
+1. **密码框被全屏遮罩压住，老师看不到**（`PasswordDialog` / `DisconnectMaskForm`）。
+   遮罩是 `TopMost` 的全屏窗口，而密码框原来只写 `ShowDialog()`，没有 owner、也没有 `TopMost`，
+   于是被遮罩盖住 —— 老师按了 5 次 Esc 却"什么也没发生"。
+   修法：`PasswordDialog` 构造里置 `TopMost = true`，并以遮罩为 **owner** 调 `ShowDialog(this)`，
+   双保险保证它永远在最前；同时把输入焦点落到密码输入框。
+2. **"遮罩没了但键鼠锁死"**（`DisconnectMaskForm.AskTeacherPassword` / `AutoClose`）。
+   触发时序：**密码框开着的时候学生把网线插回来**。
+   旧代码在"取消密码框"分支里无条件 `InputLock.Engage()` + `_tick.Start()`，
+   而此刻遮罩其实已经自行解除（后台线程判定网络恢复 → `AutoClose`）——
+   于是变成了**没有遮罩却锁着键鼠，而且 `_tick` 还在续心跳，10 秒看门狗永远不触发**，
+   老师再也救不回来。修法两处：
+   - `AskTeacherPassword()` 取消时先看 `_closed || !Visible`，**遮罩已解除就不再重新上锁**；
+   - `AutoClose()` 的收尾改为**幂等且必执行**（不再 `if (_closed) return;` 提前返回），
+     无论谁来、来几次都把 `_tick` 停掉、输入解锁、钩子卸掉；
+   - 定时器 Tick 开头加兜底：`if (_closed) { _tick.Stop(); return; }` —— 已解除就立刻停表、
+     **不再续心跳**，这样即使将来哪条路径漏了解锁，`BlockInput` 的 10 秒看门狗也必定把输入放开。
+3. **顺带修掉一个隐患：`Cursor.Hide()/Show()` 的全局计数失衡。**
+   Win32 `ShowCursor` 是**进程级引用计数**，多调一次少调一次就会让指针永久消失、
+   或"该藏时却看得见"（本轮 `AskTeacherPassword` + `AutoClose` 就会重复 Show）。
+   新增 `Interop/CursorLock`（归一化的 Hide/Show，记录 0/1 目标态，可重复调用）替换全部裸调用。
+4. **诊断能力**：`InputLock.HoldsCount`（引用计数）与 `[遮罩] 收尾完成（输入硬锁 holds=N，钩子=…）`
+   日志 —— "界面都解除了却仍有人持锁"这类事故一眼可见。
+5. **自检新增回归断言**（`[5.4]`）：`InputLock` 引用计数与归一化；
+   收尾后 `CursorLock` 必须回到"未隐藏"，不允许把指针留在隐藏态。
+6. **实测**（本机 = 真实噢易机房学生机，正式安装版）：注入 5 次 Esc → 密码框**凸在遮罩之上**；
+   保持密码框开着插回网线 → 遮罩自行解除（`收尾完成（holds=0，钩子=已卸）`）→
+   再取消密码框 → 日志 `密码框取消时遮罩已自行解除，不再重新上锁`，
+   随后注入 Win 键可正常唤出开始菜单，键鼠完全可用。全程未出现"心跳超时"。
+
 ## v0.04（2026-09-29）
 
 ### 借鉴原版审计成果的三项改进（P1）

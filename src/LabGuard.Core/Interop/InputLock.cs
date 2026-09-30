@@ -41,6 +41,12 @@ namespace LabGuard.Core.Interop
         /// <summary>是否正在硬锁（供自检/日志用）。</summary>
         public static bool IsActive { get { lock (Gate) return _thread != null; } }
 
+        /// <summary>
+        /// 当前引用计数（诊断用）。&gt; 0 表示还有人"持有"硬锁；
+        /// 界面都已解除却仍 &gt; 0，就是"键鼠锁死"类事故的直接线索。
+        /// </summary>
+        public static int HoldsCount { get { lock (Gate) return _holds; } }
+
         /// <summary>开始限制输入（可重复调用，引用计数）。</summary>
         public static void Engage(string mode)
         {
