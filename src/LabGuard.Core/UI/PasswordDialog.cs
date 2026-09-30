@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using LabGuard.Core.Config;
+using LabGuard.Core.Logging;
 
 namespace LabGuard.Core.UI
 {
@@ -35,20 +36,27 @@ namespace LabGuard.Core.UI
             ok.Click += (s, e) =>
             {
                 string pwd = _box.Text;
+                // 记录"提交内容长度"是为了能判断**按键到底有没有真正进到输入框**：
+                // 这类框常被盖在 TopMost 的全屏窗口（断网遮罩 / 锁定屏）之上，
+                // 一旦某个全局键盘钩子没放行，老师的按键会被吞掉 —— 那时长度就是 0，
+                // 日志里一眼可见（否则现场只表现为"密码打不进去"，根本没法查）。
+                if (string.IsNullOrEmpty(pwd))
+                {
+                    _hint.Text = "请输入密码";
+                    Log.Warn("口令为空就点了确定（" + Text + "）");
+                    return;
+                }
                 if (confirmNew)
                 {
                     string error = PasswordHasher.Validate(pwd);
                     if (error != null) { _hint.Text = error; return; }
                 }
-                else
+                else if (!string.IsNullOrEmpty(passwordHash) && !PasswordHasher.Verify(pwd, passwordHash))
                 {
-                    if (string.IsNullOrEmpty(pwd)) { _hint.Text = "请输入密码"; return; }
-                    if (!string.IsNullOrEmpty(passwordHash) && !PasswordHasher.Verify(pwd, passwordHash))
-                    {
-                        _hint.Text = "密码不正确，请重新输入！";
-                        _box.Clear();
-                        return;
-                    }
+                    _hint.Text = "密码不正确，请重新输入！";
+                    Log.Warn("口令校验失败（" + Text + "）：提交内容长度 " + pwd.Length);
+                    _box.Clear();
+                    return;
                 }
                 Password = pwd;
                 DialogResult = DialogResult.OK;
@@ -58,6 +66,10 @@ namespace LabGuard.Core.UI
             Controls.AddRange(new Control[] { label, _box, _hint, ok, cancel });
             AcceptButton = ok;
             CancelButton = cancel;
+
+            // 必须显式把焦点给到输入框：这类框是从全屏窗口（TopMost）之上弹出的，
+            // 默认焦点可能落在按钮上，老师就得先点一下输入框才能打字 —— 很容易被当成"打不出字"。
+            Shown += (s, e) => { Activate(); _box.Focus(); _box.Select(0, 0); };
         }
     }
 }

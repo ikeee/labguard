@@ -235,7 +235,25 @@ LabGuard.Installer.exe --screenshot D:\shots        :: 安装向导 6 页
 ```bat
 LabGuard.Agent.exe --preview-mask 8    :: 断网全屏遮罩
 LabGuard.Agent.exe --preview-lock 8    :: 全屏锁定屏
+LabGuard.Agent.exe --unlock-drill      :: 老师解锁演练（见下）
 ```
+
+**老师解锁演练**（建议装机后先跑一次，确认这条救命通道真的能用）：
+
+```bat
+LabGuard.Agent.exe --unlock-drill        :: 口令默认 a1b2c3
+LabGuard.Agent.exe --unlock-drill abc123 :: 也可以自己指定
+```
+
+它会**立刻**弹出遮罩（不用真的拔网线），然后老师照常操作：**连按 5 次 `Esc` → 输入口令 → 回车**。
+走完后程序打印一行结论，退出码 0 = 通过、1 = 失败：
+
+```
+老师解锁演练结束：密码框可见且能输入，老师已解除遮罩；遮罩已关闭；键盘钩子已卸载（PASS）
+```
+
+这条路径跨「全局键盘钩子 + 输入硬锁 + 模态密码框」三种机制，历史上出过"密码框弹出来了却一个字也打不进去"
+（在钩子回调里直接弹模态框，回调不返回把钩子链堵死了），只读代码看不出来，**必须有个可断言的验证入口**。
 
 ### 8.1 学生拔掉网线后：全屏遮罩
 

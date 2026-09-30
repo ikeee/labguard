@@ -77,6 +77,55 @@ namespace LabGuard.Agent
                 return;
             }
 
+            // --unlock-drill：**老师解锁演练** —— 不用真的拔网线也能验证这条救命通道。
+            // 自动连按 5 次 Esc 弹出密码框 → 输入口令 → 回车，最后断言遮罩是不是真的被老师解除。
+            // 之所以要有它：这条路径由「全局键盘钩子 + InputLock + 模态对话框」三样东西叠成，
+            // 只靠读代码看不出问题（历史 bug：钩子没放行，老师看得见密码框却打不出字）。
+            if (HasArg(args, "--unlock-drill"))
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                int dIdx = Array.IndexOf(args, "--unlock-drill");
+                string drillPassword = (args.Length > dIdx + 1 && !args[dIdx + 1].StartsWith("-"))
+                    ? args[dIdx + 1] : "a1b2c3";
+                bool teacherUnlocked = false;
+
+                var mask = new LabGuard.Core.UI.DisconnectMaskForm();
+                mask.InputLockMode = LabGuard.Core.Interop.InputLock.ModeOff;   // 演练不锁键鼠，随时可中止
+                mask.ShowMask("机位 DRILL-01", "网络已断开（演练）",
+                    "老师解锁演练：连按 5 次 Esc 弹出密码框，输入口令 " + drillPassword + " 后回车。",
+                    PasswordHasher.Create(drillPassword), false, true,
+                    () => "演练中：连按 5 次 Esc → 输入口令 → 回车",
+                    () => false,                                               // 演练不靠网络恢复
+                    () => { teacherUnlocked = true; });                        // 老师途径解锁时置位
+
+                Console.WriteLine("等待老师操作：连按 5 次 Esc → 输入口令 " + drillPassword + " → 回车（60 秒内）。");
+
+                // 按键由**操作者（或测试脚本）**从外部敲 —— 和真实老师完全一致：
+                // 键盘钩子是全局的，不论谁敲都会被它拦到；而由本进程注入会被系统节流/延迟。
+                DateTime end = DateTime.Now.AddSeconds(60);
+                while (DateTime.Now < end)
+                {
+                    Application.DoEvents();
+                    Thread.Sleep(50);
+                    if (!mask.Visible || teacherUnlocked) break;
+                }
+
+                if (mask.Visible) mask.AutoClose("演练超时");
+                bool closed = !mask.Visible;
+                bool hookGone = !mask.IsHookInstalled;
+                string verdict =
+                    (teacherUnlocked ? "密码框可见且能输入，老师已解除遮罩" : "未能用口令解锁（FAIL：字打不进密码框？）")
+                    + "；" + (closed ? "遮罩已关闭" : "遮罩仍可见（FAIL）")
+                    + "；" + (hookGone ? "键盘钩子已卸载" : "键盘钩子仍在（FAIL：之后 Win/Alt+Tab 会被吞）")
+                    + ((teacherUnlocked && closed && hookGone) ? "（PASS）" : "（FAIL）");
+                Console.WriteLine("老师解锁演练结束：" + verdict);
+                Log.Info("[解锁演练] " + verdict);
+                mask.Dispose();
+                Environment.ExitCode = (teacherUnlocked && closed && hookGone) ? 0 : 1;
+                return;
+            }
+
             // --preview-lock [秒]：预览"全屏锁定屏"长什么样（只显示几秒，条件到点自动满足后解除；不锁键鼠）
             if (HasArg(args, "--preview-lock"))
             {

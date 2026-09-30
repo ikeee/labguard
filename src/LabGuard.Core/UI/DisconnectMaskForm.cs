@@ -51,6 +51,13 @@ namespace LabGuard.Core.UI
         private int _tickCount;
 
         /// <summary>
+        /// 老师的密码框正在开着。此时全局键盘钩子必须<b>放行所有按键</b>，
+        /// 否则老师敲的字母数字会被我们自己吞掉 —— 表现为"密码框看得见却打不出字"。
+        /// 钩子不能只靠 InputLock 解锁来解决：那是另一套机制（BlockInput），管不到钩子。
+        /// </summary>
+        private volatile bool _teacherDialogOpen;
+
+        /// <summary>
         /// 构造此窗体的线程（= UI 线程）的托管线程 ID。
         ///
         /// 为什么必须记它：<c>Control.InvokeRequired</c> 在**句柄尚未创建**时会返回 false
@@ -63,6 +70,9 @@ namespace LabGuard.Core.UI
         private readonly int _uiThreadId;
 
         private const int WhKeyboardLl = 13;
+
+        /// <summary>诊断/自检用：全局键盘钩子当前是否已安装（解除后应为 false）。</summary>
+        public bool IsHookInstalled { get { return _hook != IntPtr.Zero; } }
 
         /// <summary>遮罩期间是否硬锁鼠标键盘（InputLock.ModeOff / ModeOn），由 Agent 从配置注入。</summary>
         public string InputLockMode { get; set; } = InputLock.ModeOn;
@@ -334,13 +344,20 @@ namespace LabGuard.Core.UI
                 {
                     if (nCode >= 0)
                     {
+                        // 老师在输密码 → 一字不放地交给系统（否则密码根本打不进去，见 _teacherDialogOpen）
+                        if (_teacherDialogOpen)
+                            return NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
+
                         int msg = wParam.ToInt32();
-                        if (msg == 0x0100 || msg == 0x0101 || msg == 0x0104 || msg == 0x0105)
+                        bool keyDown = (msg == 0x0100 || msg == 0x0104);
+                        if (keyDown || msg == 0x0101 || msg == 0x0105)
                         {
                             int vk = Marshal.ReadInt32(lParam) & 0xFF;
                             if (vk == 0x1B) // Esc：作为老师解锁入口，但仍不进系统
                             {
-                                TrackEsc();
+                                // 只在**按下**时计数：Down/Up 都算会让"连按 5 次"实际按 3 下就触发，
+                                // 与文档、与老师的肌肉记忆都对不上。
+                                if (keyDown) TrackEsc();
                                 return (IntPtr)1;
                             }
                             TrackEscReset();
@@ -360,7 +377,17 @@ namespace LabGuard.Core.UI
             _escCount++;
             if (_escCount < 5) return;
             _escCount = 0;
-            AskTeacherPassword();
+
+            // 关键：**不能在钩子回调里直接弹对话框**。
+            //
+            // 低级键盘钩子的调用是串行的：回调不返回，钩子链就一直被占着。
+            // 若在回调里 ShowDialog()，那个模态循环会一直等到老师关掉窗口才回 ——
+            // 于是期间所有按键都被系统排队，**一个都送不进输入框**，
+            // 表现为"密码框出来了却打不出字"（实测：连回车都到不了，日志里根本查不到提交记录）。
+            //
+            // 投递回 UI 线程执行，让回调立刻返回，钩子链随即恢复。
+            try { BeginInvoke(new Action(AskTeacherPassword)); }
+            catch (Exception beginEx) { Log.Warn("[遮罩] 老师解锁投递失败：" + beginEx.Message); }
         }
 
         private void TrackEscReset() { _escCount = 0; }
@@ -373,14 +400,24 @@ namespace LabGuard.Core.UI
             if (_inputEngaged) { InputLock.Disengage(); _inputEngaged = false; }
             CursorLock.Show();
             bool passed;
-            using (var dlg = new PasswordDialog("LabGuard · 解除断网遮罩",
-                       "输入小助手密码（解除后监控会暂停，避免马上又弹出）：", _passwordHash))
+            try
             {
-                // 两个都要：owner 让对话框永远压在遮罩（它是 TopMost）之上；TopMost 再兜一层。
-                // 只写 ShowDialog() 会出现"输密码的窗口被全屏遮罩盖住、老师找不到"。
-                dlg.TopMost = true;
-                passed = dlg.ShowDialog(this) == DialogResult.OK;
+                // 三个措施缺一不可，共同保证"老师真的能把密码打出来"：
+                //   1) _teacherDialogOpen → 让全局键盘钩子在这一刻放行（否则字母数字被自己吞掉）；
+                //   2) InputLock.Disengage → 放掉系统层的 BlockInput（否则连钩子都到不了）；
+                //   3) TopMost + owner    → 不会被 TopMost 的全屏遮罩压住。
+                _teacherDialogOpen = true;
+                Log.Info("[遮罩] 已弹出老师密码框：键盘钩子临时放行，输入硬锁 holds=" + InputLock.HoldsCount);
+                using (var dlg = new PasswordDialog("LabGuard · 解除断网遮罩",
+                           "输入小助手密码（解除后监控会暂停，避免马上又弹出）：", _passwordHash))
+                {
+                    // 两个都要：owner 让对话框永远压在遮罩（它是 TopMost）之上；TopMost 再兜一层。
+                    // 只写 ShowDialog() 会出现"输密码的窗口被全屏遮罩盖住、老师找不到"。
+                    dlg.TopMost = true;
+                    passed = dlg.ShowDialog(this) == DialogResult.OK;
+                }
             }
+            finally { _teacherDialogOpen = false; }   // 无论成败都必须复位，否则遮罩会永久失去吞键能力
             if (passed)
             {
                 Log.Warn("老师用密码解除了断网遮罩");
