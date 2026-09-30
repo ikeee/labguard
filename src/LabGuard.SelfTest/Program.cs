@@ -237,6 +237,55 @@ namespace LabGuard.SelfTest
             Check("收尾后 CursorLock 回到可见态（不会把指针留在隐藏态）",
                 !LabGuard.Core.Interop.CursorLock.IsHidden);
 
+            Console.WriteLine("[5.5] 按键手势解锁（Pause → ↑↑↓↓←→←→）的状态机");
+            // 独立成类就是为了能在这里断言：这条通道历史上因为"没有可断言入口"连续三轮漏验。
+            int vkUp = LabGuard.Core.Interop.UnlockGesture.VkUp;
+            int vkDown = LabGuard.Core.Interop.UnlockGesture.VkDown;
+            int vkLeft = LabGuard.Core.Interop.UnlockGesture.VkLeft;
+            int vkRight = LabGuard.Core.Interop.UnlockGesture.VkRight;
+            int vkPause = LabGuard.Core.Interop.UnlockGesture.VkPause;
+            var GR = new LabGuard.Core.Interop.UnlockGesture("Pause", "U,U,D,D,L,R,L,R", 5);
+            DateTime t0 = DateTime.Now;
+
+            Check("未按激活键时方向键无效（不会误激活）",
+                GR.KeyDown(vkUp, t0) == LabGuard.Core.Interop.GestureResult.None && !GR.Armed);
+            GR.KeyUp(vkUp);
+            Check("Pause 键激活", GR.KeyDown(vkPause, t0) == LabGuard.Core.Interop.GestureResult.Armed && GR.Armed);
+            GR.KeyUp(vkPause);
+
+            // 长按 ↑：连发 keydown 中间一个 keyup 都没有（低级钩子实测如此），必须只算一次
+            Check("长按 ↑ 的第一下推进一格", GR.KeyDown(vkUp, t0) == LabGuard.Core.Interop.GestureResult.Progress);
+            Check("长按 ↑ 的重复 keydown 被忽略（autorepeat 去重）",
+                GR.KeyDown(vkUp, t0) == LabGuard.Core.Interop.GestureResult.None);
+            Check("autorepeat 再来一次仍被忽略", GR.KeyDown(vkUp, t0) == LabGuard.Core.Interop.GestureResult.None);
+            GR.KeyUp(vkUp);
+            Check("↑ 抬起后才能再算一次", GR.KeyDown(vkUp, t0) == LabGuard.Core.Interop.GestureResult.Progress && GR.Position == 2);
+            GR.KeyUp(vkUp);
+
+            Check("走错一位 → 整段重置（返回 Mistake）",
+                GR.KeyDown(vkLeft, t0) == LabGuard.Core.Interop.GestureResult.Mistake && !GR.Armed);
+            GR.KeyUp(vkLeft);
+
+            // 完整走一遍：Pause → ↑↑↓↓←→←→
+            var last = LabGuard.Core.Interop.GestureResult.None;
+            foreach (int vk in new[] { vkPause, vkUp, vkUp, vkDown, vkDown, vkLeft, vkRight, vkLeft, vkRight })
+            { last = GR.KeyDown(vk, t0); GR.KeyUp(vk); }
+            Check("完整序列命中（返回 Unlocked）", last == LabGuard.Core.Interop.GestureResult.Unlocked);
+            Check("命中后回到未激活态", !GR.Armed && GR.Position == 0);
+
+            var gTimeout = new LabGuard.Core.Interop.UnlockGesture("Pause", null, 2);
+            gTimeout.KeyDown(vkPause, t0); gTimeout.KeyUp(vkPause);
+            Check("超过时间窗口 → 重置（返回 Timeout）",
+                gTimeout.KeyDown(vkUp, t0.AddSeconds(10)) == LabGuard.Core.Interop.GestureResult.Timeout && !gTimeout.Armed);
+
+            Check("序列填错会退回默认 ↑↑↓↓←→←→（不会让老师解锁不了）",
+                LabGuard.Core.Interop.UnlockGesture.ParseSequence("U,U,X").Length == 8);
+            Check("小键盘 8 不算上箭头（不受 NumLock 影响）",
+                LabGuard.Core.Interop.UnlockGesture.SymbolOf(0x68) == null);
+            Check("ScrollLock 可作备用激活键",
+                LabGuard.Core.Interop.UnlockGesture.VkForArmKey("ScrollLock")
+                    == LabGuard.Core.Interop.UnlockGesture.VkScrollLock);
+
             Console.WriteLine("[5.3] 断网即时归因（遮罩/日志要说清检测到什么）");
             Check("网卡消失 → 说清了网卡被禁用或拔掉",
                 NetworkGuard.DescribeDown(false, false, null).Contains("消失"));

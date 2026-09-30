@@ -89,17 +89,28 @@ namespace LabGuard.Agent
                 string drillPassword = (args.Length > dIdx + 1 && !args[dIdx + 1].StartsWith("-"))
                     ? args[dIdx + 1] : "a1b2c3";
                 bool teacherUnlocked = false;
+                bool gestureMode = HasArg(args, "--gesture");
+                bool noLock = HasArg(args, "--no-lock");
 
                 var mask = new LabGuard.Core.UI.DisconnectMaskForm();
-                mask.InputLockMode = LabGuard.Core.Interop.InputLock.ModeOff;   // 演练不锁键鼠，随时可中止
+                // 手势演练**默认真锁键鼠**：正因为 BlockInput 期间低级键盘钩子照常工作（见 docs/06），
+                // 手势才能在硬锁下解锁——这是本方案相对密码框方案的核心优势，就该在演练里被验到。
+                // （兜底：InputLock 有 10 秒看门狗，本演练也有 60 秒超时自动收尾。）
+                mask.InputLockMode = noLock ? LabGuard.Core.Interop.InputLock.ModeOff
+                                            : LabGuard.Core.Interop.InputLock.ModeOn;
+                mask.TeacherUnlockMode = gestureMode ? "Gesture" : "Password";
+                string how = gestureMode
+                    ? "按 Pause → ↑↑↓↓←→←→"
+                    : "连按 5 次 Esc → 输入口令 " + drillPassword + " → 回车";
                 mask.ShowMask("机位 DRILL-01", "网络已断开（演练）",
-                    "老师解锁演练：连按 5 次 Esc 弹出密码框，输入口令 " + drillPassword + " 后回车。",
+                    "老师解锁演练：" + how + "。",
                     PasswordHasher.Create(drillPassword), false, true,
-                    () => "演练中：连按 5 次 Esc → 输入口令 → 回车",
+                    () => "演练中：" + how,
                     () => false,                                               // 演练不靠网络恢复
                     () => { teacherUnlocked = true; });                        // 老师途径解锁时置位
 
-                Console.WriteLine("等待老师操作：连按 5 次 Esc → 输入口令 " + drillPassword + " → 回车（60 秒内）。");
+                Console.WriteLine("等待老师操作：" + how + "（60 秒内，"
+                    + (noLock ? "未锁键鼠" : "已硬锁键鼠") + "）。");
 
                 // 按键由**操作者（或测试脚本）**从外部敲 —— 和真实老师完全一致：
                 // 键盘钩子是全局的，不论谁敲都会被它拦到；而由本进程注入会被系统节流/延迟。
@@ -115,7 +126,9 @@ namespace LabGuard.Agent
                 bool closed = !mask.Visible;
                 bool hookGone = !mask.IsHookInstalled;
                 string verdict =
-                    (teacherUnlocked ? "密码框可见且能输入，老师已解除遮罩" : "未能用口令解锁（FAIL：字打不进密码框？）")
+                    (teacherUnlocked
+                        ? (gestureMode ? "手势已命中，老师已解除遮罩" : "密码框可见且能输入，老师已解除遮罩")
+                        : (gestureMode ? "未能用手势解锁（FAIL：序列没被识别？）" : "未能用口令解锁（FAIL：字打不进密码框？）"))
                     + "；" + (closed ? "遮罩已关闭" : "遮罩仍可见（FAIL）")
                     + "；" + (hookGone ? "键盘钩子已卸载" : "键盘钩子仍在（FAIL：之后 Win/Alt+Tab 会被吞）")
                     + ((teacherUnlocked && closed && hookGone) ? "（PASS）" : "（FAIL）");

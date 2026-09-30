@@ -131,6 +131,24 @@ namespace LabGuard.Core.Settings
                 "只决定遮罩这个窗口自己怎么画（默认纯深色）——两种都不动学生机的系统壁纸/桌面",
                 c => c.Network.DisconnectMaskBackground, (c, v) => c.Network.DisconnectMaskBackground = (string)v,
                 new[] { "纯深色遮罩", "随机底图" }, new[] { "Plain", "Wallpaper" }));
+            list.Add(Choice("2、网络与防火墙", "Network.TeacherUnlockMode", "老师解除遮罩的方式",
+                "手势 = Pause 激活后按 ↑↑↓↓←→←→；密码 = 连按 5 次 Esc 输密码；双通道 = 两者皆可（推荐）",
+                c => c.Network.TeacherUnlockMode, (c, v) => c.Network.TeacherUnlockMode = (string)v,
+                new[] { "双通道（推荐）", "只要手势", "只要密码" }, new[] { "Both", "Gesture", "Password" }));
+            list.Add(Choice("2、网络与防火墙", "Network.UnlockGestureArmKey", "手势的激活键",
+                "只能是单键（Ctrl+Pause 在键盘钩子里区分不出来）；部分紧凑键盘没有 Pause，可换 ScrollLock",
+                c => c.Network.UnlockGestureArmKey, (c, v) => c.Network.UnlockGestureArmKey = (string)v,
+                new[] { "Pause/Break（默认）", "Scroll Lock" }, new[] { "Pause", "ScrollLock" }));
+            list.Add(Text("2、网络与防火墙", "Network.UnlockGestureSequence", "解锁序列",
+                "逗号分隔，只认 U(上) D(下) L(左) R(右)；默认 ↑↑↓↓←→←→。填错会退回默认序列，不会让你解锁不了",
+                c => c.Network.UnlockGestureSequence, (c, v) => c.Network.UnlockGestureSequence = (string)v));
+            list.Add(Number("2、网络与防火墙", "Network.UnlockGestureWindowSeconds", "激活后必须几秒内输完",
+                "超时自动重置；太长等于给旁观者慢慢试的机会",
+                1, 60, c => c.Network.UnlockGestureWindowSeconds,
+                (c, v) => c.Network.UnlockGestureWindowSeconds = (int)v));
+            list.Add(Bool("2、网络与防火墙", "Network.UnlockGestureFeedback", "遮罩上显示手势进度点",
+                "注意：学生也看得见这些点，等于公开演示解锁过程；默认关",
+                c => c.Network.UnlockGestureFeedback, (c, v) => c.Network.UnlockGestureFeedback = (bool)v));
             list.Add(Bool("2、网络与防火墙", "Network.DisconnectMaskShowElapsed", "遮罩上显示已断开时长",
                 null, c => c.Network.DisconnectMaskShowElapsed,
                 (c, v) => c.Network.DisconnectMaskShowElapsed = (bool)v));

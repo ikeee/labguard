@@ -122,6 +122,21 @@ namespace LabGuard.Core.Config
         /// 注意：两种都只是**遮罩这个窗口自己怎么画**，与系统壁纸无关 —— 本程序从不修改学生机壁纸。
         /// </summary>
         public string DisconnectMaskBackground { get; set; } = "Plain";
+        /// <summary>
+        /// 老师解除遮罩的方式：Gesture = 按键手势（Pause → ↑↑↓↓←→←→）；
+        /// Password = 连按 5 次 Esc + 密码；Both = 两条通道都可用（默认）。
+        /// 取舍见 <c>docs/06</c>：手势**更可靠**（全程不必解除硬锁、不弹输入框），但**保密性差于密码**
+        /// （Konami Code 是公开梗，且泄露后不像密码那样能改）。故默认保留双通道。
+        /// </summary>
+        public string TeacherUnlockMode { get; set; } = "Both";
+        /// <summary>手势的激活键：Pause（默认，即 Pause/Break）/ ScrollLock。**只能是单键**（Ctrl+Pause 区分不出来）。</summary>
+        public string UnlockGestureArmKey { get; set; } = "Pause";
+        /// <summary>解锁序列，逗号分隔，只接受 U/D/L/R（上/下/左/右）。默认 ↑↑↓↓←→←→。</summary>
+        public string UnlockGestureSequence { get; set; } = "U,U,D,D,L,R,L,R";
+        /// <summary>激活后必须在此秒数内输完，超时自动重置（1~60 秒）。</summary>
+        public int UnlockGestureWindowSeconds { get; set; } = 5;
+        /// <summary>是否在遮罩上显示手势进度点。**学生也看得见**，默认关。</summary>
+        public bool UnlockGestureFeedback { get; set; } = false;
         /// <summary>只监控这些网卡（填网卡名，一行一个；留空 = 自动选择联网网卡）。</summary>
         public List<string> WatchedInterfaces { get; set; } = new List<string>();
         /// <summary>

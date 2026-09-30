@@ -79,6 +79,27 @@ namespace LabGuard.Core.UI
 
         private bool _inputEngaged;
 
+        // ---------------- 老师解锁通道之二：按键手势（Pause → ↑↑↓↓←→←→） ----------------
+        // 全部由 Agent 从配置注入（与 InputLockMode 同款风格，避免 ShowMask 参数继续膨胀）。
+        /// <summary>Gesture = 只要手势；Password = 只要 5×Esc + 密码；Both = 两条都可用（默认）。</summary>
+        public string TeacherUnlockMode { get; set; } = "Both";
+        /// <summary>手势激活键：Pause（默认）/ ScrollLock。**只能是单键**。</summary>
+        public string GestureArmKey { get; set; } = "Pause";
+        /// <summary>解锁序列文本，逗号分隔，只认 U/D/L/R。默认 ↑↑↓↓←→←→。</summary>
+        public string GestureSequence { get; set; } = "U,U,D,D,L,R,L,R";
+        /// <summary>激活后必须在此秒数内输完，超时自动重置。</summary>
+        public int GestureWindowSeconds { get; set; } = 5;
+        /// <summary>是否显示进度点。**学生也看得见**，默认关。</summary>
+        public bool GestureFeedback { get; set; }
+
+        private UnlockGesture _gesture;
+        private DateTime _gestureHintUntil = DateTime.MinValue;
+
+        /// <summary>手势通道是否启用。</summary>
+        private bool GestureOn { get { return TeacherUnlockMode != "Password"; } }
+        /// <summary>密码通道（5×Esc + 密码框）是否启用。</summary>
+        private bool PasswordOn { get { return TeacherUnlockMode != "Gesture"; } }
+
         public DisconnectMaskForm()
         {
             FormBorderStyle = FormBorderStyle.None;
@@ -174,7 +195,32 @@ namespace LabGuard.Core.UI
                 if (!string.IsNullOrEmpty(elapsed))
                     text = string.IsNullOrEmpty(text) ? elapsed : text + " · " + elapsed;
             }
+            // 手势反馈：进度点（只在开了 UnlockGestureFeedback 时显示，因为学生也看得见）
+            if (GestureFeedback && _gesture != null && _gesture.Armed)
+                text += "   " + ProgressDots();
+            // 失败/超时的极轻提示：老师按错了要能知道，否则会以为机器坏了
+            if (_gestureHintUntil > DateTime.Now)
+                text += "   手势未识别";
             _number.Text = text;
+        }
+
+        /// <summary>提示老师怎么解除——按当前启用的通道给出对应文案。</summary>
+        private string TeacherTip()
+        {
+            const string auto = "恢复网络后 10 秒内自动消失";
+            string gesture = "老师：按 Pause 后按 ↑↑↓↓←→←→ 解除";
+            if (GestureArmKey == "ScrollLock") gesture = "老师：按 Scroll Lock 后按 ↑↑↓↓←→←→ 解除";
+            if (GestureOn && PasswordOn) return "（" + auto + "；" + gesture + "；或连按 5 次 Esc 输密码）";
+            if (GestureOn) return "（" + auto + "；" + gesture + "）";
+            return "（" + auto + "；老师连续按 5 次 Esc 可输入密码解除）";
+        }
+
+        /// <summary>进度点：已匹配的画 ●，未匹配的画 ○。</summary>
+        private string ProgressDots()
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < _gesture.Sequence.Length; i++) sb.Append(i < _gesture.Position ? "●" : "○");
+            return sb.ToString();
         }
 
         public void ShowMask(string machineNumber, string headLine, string advice, string passwordHash,
@@ -200,9 +246,11 @@ namespace LabGuard.Core.UI
             _networkRestored = networkRestored;
             _teacherUnlock = teacherUnlock;
 
+            _gesture = new UnlockGesture(GestureArmKey, GestureSequence, GestureWindowSeconds);
+            _gestureHintUntil = DateTime.MinValue;
+
             _title.Text = headLine;
-            _hint.Text = advice + Environment.NewLine + Environment.NewLine +
-                         "（恢复网络后 10 秒内自动消失；老师连续按 5 次 Esc 可输入密码解除）";
+            _hint.Text = advice + Environment.NewLine + Environment.NewLine + TeacherTip();
             _machineNumber = machineNumber;
             UpdateBottomLine();
 
@@ -353,15 +401,16 @@ namespace LabGuard.Core.UI
                         if (keyDown || msg == 0x0101 || msg == 0x0105)
                         {
                             int vk = Marshal.ReadInt32(lParam) & 0xFF;
-                            if (vk == 0x1B) // Esc：作为老师解锁入口，但仍不进系统
+                            if (!keyDown)
                             {
-                                // 只在**按下**时计数：Down/Up 都算会让"连按 5 次"实际按 3 下就触发，
-                                // 与文档、与老师的肌肉记忆都对不上。
-                                if (keyDown) TrackEsc();
+                                // 抬起：清掉"按住"标记，同一个键才能再次计数。
+                                // 长按会连发 keydown 而中间一个 keyup 都没有（实测如此），
+                                // 不去重的话老师手一抖多按半秒，序列就被冲乱、再也解锁不了。
+                                if (GestureOn && _gesture != null) _gesture.KeyUp(vk);
                                 return (IntPtr)1;
                             }
-                            TrackEscReset();
-                            return (IntPtr)1; // 其它键全部吞掉
+                            OnTeacherKeyDown(vk);
+                            return (IntPtr)1;   // 按下：一律吞掉，不进系统
                         }
                     }
                     return NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
@@ -391,6 +440,54 @@ namespace LabGuard.Core.UI
         }
 
         private void TrackEscReset() { _escCount = 0; }
+
+        /// <summary>
+        /// 老师按下一个键（此时遮罩仍在硬锁 + 全吞键状态）。分流到两条解锁通道。
+        /// </summary>
+        private void OnTeacherKeyDown(int vk)
+        {
+            try
+            {
+                // ① 手势通道：**全程不需要放开硬锁、不需要任何输入框**。
+                //    实测证明 BlockInput(TRUE) 期间低级键盘钩子照常工作（见 docs/06），
+                //    所以这条通道根本不碰 InputLock / 钩子放行 / 窗口层级 —— 那正是近三轮 Bug 的共同根源。
+                if (GestureOn && _gesture != null)
+                {
+                    GestureResult r = _gesture.KeyDown(vk, DateTime.Now);
+                    // 只记录"激活期间 + 有变化"的按键，避免学生乱按把日志刷爆
+                    if (r != GestureResult.None || _gesture.Armed)
+                        Log.Info("[手势] vk=0x" + vk.ToString("X2") + " → " + r + " pos=" + _gesture.Position);
+                    if (r == GestureResult.Unlocked)
+                    {
+                        // 仍然要投递回 UI 线程：钩子回调必须立刻返回，绝不能在回调里动窗口/弹对话框。
+                        // （回调不返回 → 钩子链串行阻塞 → 期间所有按键被系统排队。）
+                        try { BeginInvoke(new Action(TeacherGestureUnlock)); }
+                        catch (Exception ex) { Log.Warn("[遮罩] 手势解锁投递失败：" + ex.Message); }
+                        return;
+                    }
+                    if (r == GestureResult.Mistake || r == GestureResult.Timeout)
+                        _gestureHintUntil = DateTime.Now.AddSeconds(2);   // 按错要给一点反馈，否则老师以为机器坏了
+                    if (r != GestureResult.None) UpdateBottomLine();
+                }
+
+                // ② 密码通道（连按 5 次 Esc → 密码框），仅在未设为纯手势时启用
+                if (PasswordOn)
+                {
+                    if (vk == 0x1B) { TrackEsc(); return; }   // Esc
+                    TrackEscReset();
+                }
+            }
+            catch (Exception ex) { Log.Warn("[遮罩] 老师按键处理异常：" + ex.Message); }
+        }
+
+        /// <summary>手势命中 → 解除遮罩（已在 UI 线程）。</summary>
+        private void TeacherGestureUnlock()
+        {
+            if (_closed) return;
+            Log.Warn("老师用按键手势解除了断网遮罩");
+            AutoClose("老师已用按键手势解除");
+            try { _teacherUnlock?.Invoke(); } catch { }
+        }
 
         private void AskTeacherPassword()
         {

@@ -105,6 +105,22 @@ namespace LabGuard.Agent
             string mode = LabGuard.Core.Interop.InputLock.Normalize(_config.InputHardLock);
             _lockScreen.InputLockMode = mode;
             _disconnectMask.InputLockMode = mode;
+            ApplyTeacherUnlockMode();
+        }
+
+        /// <summary>
+        /// 把"老师怎么解除断网遮罩"从配置同步给遮罩（手势 / 密码 / 双通道）。
+        /// 改配置后也会重新调用，所以老师不用重启小助手就能切换通道。
+        /// </summary>
+        private void ApplyTeacherUnlockMode()
+        {
+            var n = _config.Network;
+            _disconnectMask.TeacherUnlockMode = string.IsNullOrEmpty(n.TeacherUnlockMode) ? "Both" : n.TeacherUnlockMode;
+            _disconnectMask.GestureArmKey = string.IsNullOrEmpty(n.UnlockGestureArmKey) ? "Pause" : n.UnlockGestureArmKey;
+            _disconnectMask.GestureSequence = string.IsNullOrEmpty(n.UnlockGestureSequence)
+                ? "U,U,D,D,L,R,L,R" : n.UnlockGestureSequence;
+            _disconnectMask.GestureWindowSeconds = n.UnlockGestureWindowSeconds < 1 ? 5 : n.UnlockGestureWindowSeconds;
+            _disconnectMask.GestureFeedback = n.UnlockGestureFeedback;
         }
 
         private void StartEngine()
