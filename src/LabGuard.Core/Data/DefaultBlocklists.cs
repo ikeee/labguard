@@ -34,6 +34,20 @@ namespace LabGuard.Core.Data
             "procexp", "procexp64"
         };
 
+        /// <summary>
+        /// **专门用来结束进程的工具**（防拆用：配合「进程防拆加固 → 拦截杀进程工具」开关）。
+        /// 与 <see cref="ProcessTools"/>（通用进程/内核工具）分开，
+        /// 是为了让老师能单独决定："要不要连这些杀进程的小工具一起拦"。
+        /// </summary>
+        public static readonly string[] KillTools =
+        {
+            "SystemInformer", "systeminformer", "ProcessHacker", "processhacker",
+            "taskkill", "Task Killer", "PsKill", "pskill", "KillProcess", "End Process",
+            "ProcessKO", "Process Assassin", "KillBox", "Unlocker", "Advanced Process Termination",
+            "Process Terminator", "TaskManager Pro", "AnVir Task Manager", "System Explorer",
+            "进程杀手", "进程终结者", "强制结束进程", "进程管理大师", "超级进程管理", "进程终结"
+        };
+
         /// <summary>虚拟桌面类（学生用它脱离课堂广播）。</summary>
         public static readonly string[] VirtualDesktop =
         {

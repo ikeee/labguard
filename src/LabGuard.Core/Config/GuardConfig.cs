@@ -37,6 +37,7 @@ namespace LabGuard.Core.Config
         public SiteSettings Site { get; set; } = new SiteSettings();
         public RegistryAclSettings RegistryAcl { get; set; } = new RegistryAclSettings();
         public WatchdogSettings Watchdog { get; set; } = new WatchdogSettings();
+        public AntiTamperSettings AntiTamper { get; set; } = new AntiTamperSettings();
 
         public IEnumerable<KeyValuePair<string, bool>> Snapshot()
         {
@@ -53,6 +54,7 @@ namespace LabGuard.Core.Config
             yield return new KeyValuePair<string, bool>("机位编号", Site.ShowMachineNumber);
             yield return new KeyValuePair<string, bool>("注册表权限加固", RegistryAcl.Enabled);
             yield return new KeyValuePair<string, bool>("互相守护", Watchdog.Enabled);
+            yield return new KeyValuePair<string, bool>("进程防拆加固", AntiTamper.Enabled);
         }
     }
 
@@ -338,5 +340,43 @@ namespace LabGuard.Core.Config
         public bool HideInstallDir { get; set; } = true;
         /// <summary>关键文件校验失败时是否进入锁定。</summary>
         public bool LockOnIntegrityFailure { get; set; } = true;
+    }
+
+    /// <summary>
+    /// 进程防拆加固（对付"学生从任务管理器一键杀掉 LabGuard"）。
+    /// 分四层，任意一层生效都能让"杀进程"变成无用功，四层一起开才叫加固：
+    /// ① 进程 DACL 硬化（标准用户点不动）→ ② 秒级复活（管理员杀掉也立刻回来）
+    /// → ③ 兜底计划任务（服务被停/被删也能自愈）→ ④ 反复被杀告警（老师能看见谁在搞事）。
+    /// 边界写在 docs/07：管理员身份的学生**仍杀得掉**，本组不假装能做到驱动级保护。
+    /// </summary>
+    public class AntiTamperSettings
+    {
+        public bool Enabled { get; set; } = true;
+        /// <summary>
+        /// ① 给小助手/服务进程套 DACL：只有 SYSTEM 与管理员能终止，当前用户只剩"查询"权。
+        /// 标准学生在任务管理器点「结束任务」会收到「拒绝访问」。
+        /// </summary>
+        public bool HardenProcessDacl { get; set; } = true;
+        /// <summary>
+        /// ② 秒级复活：服务用进程句柄等待（WaitForSingleObject），小助手一退出就立刻重拉，
+        /// 不再等 <c>Watchdog.AgentRestartSeconds</c> 的轮询间隔。
+        /// </summary>
+        public bool FastRestart { get; set; } = true;
+        /// <summary>
+        /// ③ 兜底计划任务（SYSTEM，每分钟）：服务不在就 net start，小助手不在就拉起。
+        /// 对付"学生把服务停掉/删掉"——服务和代理同时没了也还有这一条。
+        /// </summary>
+        public bool ScheduledTaskGuard { get; set; } = true;
+        /// <summary>④ 反复被杀时升级告警并记入 tamper 标记（老师能从日志/心跳看到）。</summary>
+        public bool AlertOnRepeatedKill { get; set; } = true;
+        /// <summary>④ 的阈值：这么多分钟内被杀这么多次才算"有人在搞事"。</summary>
+        public int RepeatKillWindowMinutes { get; set; } = 5;
+        /// <summary>④ 的次数阈值。</summary>
+        public int RepeatKillCount { get; set; } = 3;
+        /// <summary>
+        /// 顺手把常见的"杀进程工具"（Process Hacker / SystemInformer / taskkill 等）纳入违规软件拦截。
+        /// 用现有的「进程/内核/注册表工具」清单，不新增一套匹配逻辑。
+        /// </summary>
+        public bool BlockKillTools { get; set; } = true;
     }
 }

@@ -38,6 +38,7 @@ namespace LabGuard.Agent
             _lockScreen = new LockScreenForm(_config.PasswordHash);
             _engine = new GuardEngine(_config);
             ApplyInputLockMode();
+            HardenSelf();
 
             _tray = null;
             try
@@ -100,6 +101,38 @@ namespace LabGuard.Agent
         }
 
         /// <summary>把"锁屏/遮罩是否硬锁鼠标键盘"从配置同步给两个全屏窗体（配置改动后也会重新调用）。</summary>
+        /// <summary>
+        /// 防拆①：给小助手进程套 DACL，让标准用户在任务管理器里点「结束任务」收到「拒绝访问」。
+        /// 只在真跑时做（干跑/预览不改进程安全描述符）；失败只记日志，绝不影响监控本身。
+        /// </summary>
+        private void HardenSelf()
+        {
+            if (_dryRun || !(_config.AntiTamper.Enabled && _config.AntiTamper.HardenProcessDacl)) return;
+            try
+            {
+                string detail;
+                if (Core.Interop.ProcessHardening.HardenSelf(out detail))
+                    Log.Info("[防拆] 小助手进程已加固：" + detail);
+                else
+                    Log.Warn("[防拆] 小助手进程加固失败：" + detail);
+            }
+            catch (Exception ex) { Log.Warn("[防拆] 加固异常（忽略）：" + ex.Message); }
+        }
+
+        /// <summary>
+        /// 老师正常退出前把 DACL 还原成默认，避免"自己杀不掉自己"（也方便卸载脚本收尾）。
+        /// 所有者始终被隐式授予 WRITE_DAC，所以这一步无论加固与否都做得回来。
+        /// </summary>
+        private void UnhardenSelf()
+        {
+            try
+            {
+                string detail;
+                Core.Interop.ProcessHardening.RestoreSelf(out detail);
+            }
+            catch { }
+        }
+
         private void ApplyInputLockMode()
         {
             string mode = LabGuard.Core.Interop.InputLock.Normalize(_config.InputHardLock);
@@ -176,6 +209,7 @@ namespace LabGuard.Agent
             _engine.Stop(markPaused: true);
             // 与服务一起退出，保证系统状态被还原
             Core.Interop.SystemActions.Run("net.exe", "stop " + WatchdogGuard.ServiceName);
+            UnhardenSelf();                     // 退出前解除进程加固，避免"自己杀不掉自己"
             if (_tray != null) _tray.Visible = false;
             Balloon("LabGuard", "已退出并还原被改动的系统设置。");
             ExitThread();

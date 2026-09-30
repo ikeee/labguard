@@ -196,6 +196,7 @@ namespace LabGuard.Core.Guards
                 "\"service\":" + (serviceOk ? "true" : "false") + "," +
                 "\"agent\":true," +
                 "\"paused\":" + (IsPaused() ? "true" : "false") + "," +
+                "\"killAlert\":" + (Config.ConfigStore.KillAlert ? "true" : "false") + "," +
                 "\"dns\":\"" + string.Join(",", Context.Config.Network.DnsServers) + "\"," +
                 "\"wiredOnly\":" + (Context.Config.Network.WatchWiredOnly ? "true" : "false") + "," +
                 "\"tamper\":" + (Config.ConfigStore.TamperSuspected ? "true" : "false") +

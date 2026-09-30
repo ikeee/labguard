@@ -30,6 +30,9 @@ param(
 $ErrorActionPreference = 'Continue'
 $svc = 'LabGuardSvc'
 $taskName = 'LabGuard\Agent'
+# 防拆兜底任务（SYSTEM，每分钟自愈）：**必须先删掉它**，
+# 否则清理过程中它每分钟把服务/小助手拉回来，会出现"卸载了又活了"的假象。
+$guardTask = 'LabGuard\Guard'
 $regRoot = 'HKLM:\SOFTWARE\LabGuard'
 $uninstKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LabGuard'
 $uninstKeyLegacy = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LabGuardReplica'
@@ -72,6 +75,7 @@ if (-not $Force -and -not $DryRun) {
 }
 
 Write-Host '1) 停止并删除守护服务' -ForegroundColor Cyan
+Run-Step ('删除防拆兜底任务 ' + $guardTask) { & schtasks.exe /delete /tn $guardTask /f 2>$null | Out-Null }
 Run-Step ("停止服务 $svc") { & sc.exe stop $svc | Out-Null; Start-Sleep -Seconds 2 }
 Run-Step ("结束小助手进程") { Get-Process -Name 'LabGuard.Agent','LabGuard.Service','LabGuard.Settings','LabGuard.Launcher' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
 Run-Step ("删除服务 $svc") { & sc.exe delete $svc | Out-Null }
@@ -81,6 +85,7 @@ foreach ($root in @('HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\Minimal','H
 
 Write-Host '2) 删除自启动计划任务与快捷方式' -ForegroundColor Cyan
 Run-Step ('删除计划任务 ' + $taskName) { & schtasks.exe /delete /tn $taskName /f 2>$null | Out-Null }
+Run-Step ('再次确认删除防拆兜底任务 ' + $guardTask) { & schtasks.exe /delete /tn $guardTask /f 2>$null | Out-Null }
 Run-Step '删除桌面/开始菜单快捷方式' {
     foreach ($lnk in @(
         (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'LabGuard.lnk'),

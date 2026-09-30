@@ -68,6 +68,12 @@ namespace LabGuard.Core.Config
         /// <summary>已安装、但既没有配置文件也没有备份 → 高度怀疑被人破坏。</summary>
         public static bool TamperSuspected { get; private set; }
 
+        /// <summary>
+        /// 防拆告警：小助手在短时间内被反复结束（有人在杀进程）时置位。
+        /// 与 <see cref="TamperSuspected"/>（配置文件被破坏）是两回事，分开记，老师看心跳时能分清。
+        /// </summary>
+        public static bool KillAlert { get; set; }
+
         public static void ClearTamperFlags()
         {
             RestoredFromMirror = false;

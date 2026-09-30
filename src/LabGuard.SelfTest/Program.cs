@@ -286,6 +286,63 @@ namespace LabGuard.SelfTest
                 LabGuard.Core.Interop.UnlockGesture.VkForArmKey("ScrollLock")
                     == LabGuard.Core.Interop.UnlockGesture.VkScrollLock);
 
+            Console.WriteLine("[5.6] 进程防拆加固（任务管理器杀不掉 / 老师仍杀得掉）");
+            // 与手势解锁同一个道理：这条链踩过"没有可断言入口"的亏，
+            // 所以 SDDL 的构造与校验都做成纯函数，这里不改动进程也能验规则。
+            string sid = "S-1-5-21-1111111111-2222222222-3333333333-1001";
+            string hard = LabGuard.Core.Interop.ProcessHardening.BuildSddl(sid);
+            Check("加固 SDDL 含 SYSTEM 完全控制", hard.Contains("(A;;GA;;;SY)"));
+            Check("加固 SDDL 含管理员完全控制（老师/卸载必须能杀）", hard.Contains("(A;;GA;;;BA)"));
+            Check("加固 SDDL 里当前用户只剩查询权（0x101400）",
+                hard.Contains("(A;;0x101400;;;" + sid + ")"));
+            Check("加固 SDDL 不含【用户完全控制】", !hard.Contains("(A;;GA;;;" + sid + ")"));
+
+            Check("形态校验：认得出加固过的 SDDL",
+                LabGuard.Core.Interop.ProcessHardening.LooksHardened(hard, sid));
+            Check("形态校验：认得出【用户还是完全控制】（没加固住）",
+                !LabGuard.Core.Interop.ProcessHardening.LooksHardened("D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;" + sid + ")", sid));
+            Check("形态校验：缺 SYSTEM 完全控制 = 不合格（系统收尾会出问题）",
+                !LabGuard.Core.Interop.ProcessHardening.LooksHardened("D:P(A;;GA;;;BA)(A;;0x101400;;;" + sid + ")", sid));
+            Check("形态校验：空/异常输入不会误判为已加固",
+                !LabGuard.Core.Interop.ProcessHardening.LooksHardened(null, sid) &&
+                !LabGuard.Core.Interop.ProcessHardening.LooksHardened("", sid));
+            Check("无用户 SID 时仍能构造（不会出现畸形 SDDL）",
+                LabGuard.Core.Interop.ProcessHardening.BuildSddl(null) == "D:P(A;;GA;;;SY)(A;;GA;;;BA)");
+            // 真机演练踩到的坑：系统读回来的 SDDL 会把 GA 展开成 0x1fffff、把 SID 写成别名（LA 等），
+            // 纯文本比对必然失配 —— 下面两条就是那条坑的回归防线。
+            Check("形态校验：认得系统读回的展开格式（GA→0x1fffff）",
+                LabGuard.Core.Interop.ProcessHardening.LooksHardened(
+                    "D:P(A;;0x1fffff;;;SY)(A;;0x1fffff;;;BA)(A;;0x101400;;;S-1-5-21-1-2-3-500)", "S-1-5-21-1-2-3-500"));
+            Check("形态校验：展开格式下【用户还是完全控制】照样认得出来",
+                !LabGuard.Core.Interop.ProcessHardening.LooksHardened(
+                    "D:P(A;;0x1fffff;;;SY)(A;;0x1fffff;;;BA)(A;;0x1fffff;;;S-1-5-21-1-2-3-500)", "S-1-5-21-1-2-3-500"));
+            Check("服务进程本身就是 SYSTEM：不再追加一条自相矛盾的【只读】ACE",
+                LabGuard.Core.Interop.ProcessHardening.BuildSddl("S-1-5-18") == "D:P(A;;GA;;;SY)(A;;GA;;;BA)");
+            Check("形态校验：服务进程（SYSTEM）也算已加固",
+                LabGuard.Core.Interop.ProcessHardening.LooksHardened(
+                    "D:P(A;;0x1fffff;;;SY)(A;;0x1fffff;;;BA)(A;;0x101400;;;SY)", "S-1-5-18"));
+            Check("形态校验：畸形 SDDL 不会误判为已加固",
+                !LabGuard.Core.Interop.ProcessHardening.LooksHardened("这不是一条SDDL", sid) &&
+                !LabGuard.Core.Interop.ProcessHardening.LooksHardened("D:(X;;GA;;;SY)", sid));
+
+            Check("还原 SDDL 把【结束进程】权还给所有者（老师退出/卸载不会被自己挡住）",
+                LabGuard.Core.Interop.ProcessHardening.RestoreSddl().Contains("(A;;GA;;;OW)"));
+            Check("留给用户的权限不含 TERMINATE/VM_WRITE/SUSPEND",
+                (LabGuard.Core.Interop.ProcessHardening.UserReadOnly &
+                 (LabGuard.Core.Interop.ProcessHardening.Terminate |
+                  LabGuard.Core.Interop.ProcessHardening.VmWrite |
+                  LabGuard.Core.Interop.ProcessHardening.SuspendResume)) == 0);
+
+            Check("默认开启进程防拆（四层都开）",
+                new GuardConfig().AntiTamper.Enabled &&
+                new GuardConfig().AntiTamper.HardenProcessDacl &&
+                new GuardConfig().AntiTamper.FastRestart &&
+                new GuardConfig().AntiTamper.ScheduledTaskGuard);
+            Check("杀进程工具清单已纳入 SystemInformer / taskkill",
+                LabGuard.Core.Data.DefaultBlocklists.KillTools.Length > 0 &&
+                System.Array.IndexOf(LabGuard.Core.Data.DefaultBlocklists.KillTools, "SystemInformer") >= 0 &&
+                System.Array.IndexOf(LabGuard.Core.Data.DefaultBlocklists.KillTools, "taskkill") >= 0);
+
             Console.WriteLine("[5.3] 断网即时归因（遮罩/日志要说清检测到什么）");
             Check("网卡消失 → 说清了网卡被禁用或拔掉",
                 NetworkGuard.DescribeDown(false, false, null).Contains("消失"));

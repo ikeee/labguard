@@ -139,6 +139,9 @@ namespace LabGuard.Core.Guards
             var list = new List<string>();
             if (cfg.BlockClassroomCrack) list.AddRange(DefaultBlocklists.ClassroomCrack);
             if (cfg.BlockProcessTools) list.AddRange(DefaultBlocklists.ProcessTools);
+            // 防拆④：把"专门用来结束进程"的工具也纳进来（受「进程防拆加固」里的独立开关控制）
+            if (Context.Config.AntiTamper.Enabled && Context.Config.AntiTamper.BlockKillTools)
+                list.AddRange(DefaultBlocklists.KillTools);
             if (cfg.BlockVirtualDesktop) list.AddRange(DefaultBlocklists.VirtualDesktop);
             if (cfg.BlockAntiVirus) list.AddRange(DefaultBlocklists.AntiVirus);
             if (cfg.BlockArchivers) list.AddRange(DefaultBlocklists.Archivers);

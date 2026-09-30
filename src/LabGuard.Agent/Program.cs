@@ -177,6 +177,74 @@ namespace LabGuard.Agent
                 return;
             }
 
+            // --harden-drill：**进程防拆演练**（可断言，不用肉眼看截图）
+            // 验证"加固 → 任务管理器杀不掉 → 老师仍能正常结束"这条链：
+            // ① 套 DACL 后读回来校验形态；② 用当前身份试 OpenProcess(TERMINATE/VM_WRITE)；
+            // ③ 还原成默认 DACL 后再试一次（必须能杀，否则老师/卸载脚本会被自己挡住）。
+            if (HasArg(args, "--harden-drill"))
+            {
+                bool keep = HasArg(args, "--keep");
+                int pid = System.Diagnostics.Process.GetCurrentProcess().Id;
+                bool admin = LabGuard.Core.Interop.ProcessHardening.IsAdministrator();
+                string sid = LabGuard.Core.Interop.ProcessHardening.CurrentUserSid();
+                Console.WriteLine("进程防拆演练（pid=" + pid + "；管理员身份=" + (admin ? "是" : "否") + "）");
+
+                string detail;
+                bool ok = LabGuard.Core.Interop.ProcessHardening.HardenSelf(out detail);
+                string after = LabGuard.Core.Interop.ProcessHardening.ReadOwnSddl();
+                bool looks = LabGuard.Core.Interop.ProcessHardening.LooksHardened(after, sid);
+                bool canKill = LabGuard.Core.Interop.ProcessHardening.CanOpen(pid, LabGuard.Core.Interop.ProcessHardening.Terminate);
+                bool canWrite = LabGuard.Core.Interop.ProcessHardening.CanOpen(pid, LabGuard.Core.Interop.ProcessHardening.VmWrite);
+
+                Console.WriteLine("  加固调用：" + (ok ? "成功" : "失败 → " + detail));
+                Console.WriteLine("  加固后 DACL：" + after);
+                Console.WriteLine("  形态校验（SYSTEM/管理员完全控制 + 当前用户只剩查询权）：" + (looks ? "通过" : "未通过"));
+                Console.WriteLine("  当前身份 OpenProcess(TERMINATE)：" + (canKill ? "成功（杀得掉）" : "被拒绝（杀不掉）"));
+                Console.WriteLine("  当前身份 OpenProcess(VM_WRITE)：" + (canWrite ? "成功" : "被拒绝"));
+
+                string how;
+                bool pass;
+                if (admin)
+                {
+                    // 管理员（含 SeDebugPrivilege）本来就绕得过 DACL —— 这是设计上承认的边界，
+                    // 管理员机房靠"秒级复活 + 兜底计划任务"，不靠这一层挡。
+                    how = "管理员身份：DACL 已按预期套上，但管理员仍可结束进程（设计如此，见 docs/07）；" +
+                          "这台机器防的是「杀掉后不回来」，由秒级复活与兜底任务兜住";
+                    pass = looks;
+                }
+                else
+                {
+                    pass = looks && !canKill && !canWrite;
+                    how = pass ? "标准用户：任务管理器 / taskkill 已无法结束本进程（拒绝访问）"
+                               : "标准用户仍能结束本进程（FAIL）";
+                }
+
+                bool restored = true;
+                bool canKillAfter = true;
+                if (!keep)
+                {
+                    restored = LabGuard.Core.Interop.ProcessHardening.RestoreSelf(out detail);
+                    canKillAfter = LabGuard.Core.Interop.ProcessHardening.CanOpen(pid, LabGuard.Core.Interop.ProcessHardening.Terminate);
+                    Console.WriteLine("  还原 DACL：" + (restored ? "成功" : "失败 → " + detail));
+                    Console.WriteLine("  还原后 OpenProcess(TERMINATE)：" + (canKillAfter ? "成功（老师/卸载脚本能正常结束）" : "仍被拒绝（FAIL：会把自己挡在门外）"));
+                    pass = pass && restored && canKillAfter;
+                }
+
+                string verdict = "进程防拆演练结束：" + how + "（" + (pass ? "PASS" : "FAIL") + "）";
+                Console.WriteLine(verdict);
+                Log.Info("[防拆演练] " + how + "（" + (pass ? "PASS" : "FAIL") + "）");
+                // --out <文件>：把结论落盘。用 runas /trustlevel 以"标准用户"身份跑演练时，
+                // 新窗口里的输出看不到，只能靠文件回收结论（本机是管理员，这是唯一能验"标准用户杀不掉"的办法）。
+                int oi = Array.IndexOf(args, "--out");
+                if (oi >= 0 && args.Length > oi + 1)
+                {
+                    try { File.WriteAllText(args[oi + 1], verdict, new System.Text.UTF8Encoding(false)); }
+                    catch (Exception ex) { Console.WriteLine("写结果文件失败：" + ex.Message); }
+                }
+                Environment.ExitCode = pass ? 0 : 1;
+                return;
+            }
+
             // 已配置密码时才允许单实例；未配置时也允许运行（只是不启用管控）
             bool created;
             using (var mutex = new Mutex(true, @"Global\LabGuard.Agent", out created))
@@ -222,7 +290,15 @@ namespace LabGuard.Agent
             foreach (System.Diagnostics.Process p in System.Diagnostics.Process.GetProcessesByName("LabGuard.Agent"))
             {
                 if (p.Id == System.Diagnostics.Process.GetCurrentProcess().Id) continue;
-                try { p.Kill(); } catch { }
+                try
+                {
+                    // 进程防拆加固后，"同用户"已经杀不掉它了 —— 先把它的 DACL 还原成默认再结束，
+                    // 否则老师用密码暂停时会留下一个杀不掉的小助手（加固挡学生可以，绝不能挡老师）。
+                    string detail;
+                    LabGuard.Core.Interop.ProcessHardening.RestoreProcess(p.Id, out detail);
+                    p.Kill();
+                }
+                catch { }
             }
             LabGuard.Core.Interop.SystemActions.Run("net.exe", "stop " + WatchdogGuard.ServiceName);
             MessageBox.Show("已暂停监控并解除锁定。\r\n\r\n要恢复监控：运行【设置】后保存，或再次运行小助手。",

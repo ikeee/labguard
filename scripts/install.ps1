@@ -121,8 +121,10 @@ if (Get-Service -Name 'LabGuardSvc' -ErrorAction SilentlyContinue) {
 if (-not $DryRun) {
     & sc.exe create LabGuardSvc binPath= "`"$svcExe`"" start= auto obj= LocalSystem DisplayName= "LabGuard守护服务（独立实现）" | Out-Null
     & sc.exe description LabGuardSvc "LabGuard：系统级策略守护，保证小助手与电子教室保护持续生效。" | Out-Null
-# 服务异常时默认只自动重启服务（不重启电脑）
-    & sc.exe failure LabGuardSvc actions= restart/60000/restart/60000/restart/60000 reset= 900 | Out-Null
+# 服务异常时默认只自动重启服务（不重启电脑）。
+    # 间隔压到 5/10/30 秒：学生从任务管理器"结束进程树"把服务杀掉后，5 秒内服务就回来了
+    # （原来 60 秒的空窗足够学生干很多事；这是防拆②"秒级复活"在服务侧的对应配置）。
+    & sc.exe failure LabGuardSvc actions= restart/5000/restart/10000/restart/30000 reset= 300 | Out-Null
 }
 if (-not $DryRun) { Write-Host "已创建服务 LabGuardSvc。" -ForegroundColor Green }
 
@@ -131,6 +133,21 @@ $agentExe = Join-Path $InstallDir 'LabGuard.Agent.exe'
 $taskName = 'LabGuard\Agent'
 if (-not $DryRun) { & schtasks.exe /create /tn $taskName /tr "`"$agentExe`"" /sc onlogon /rl highest /f | Out-Null }
 if (-not $DryRun) { Write-Host "已创建登录自启计划任务 $taskName。" -ForegroundColor Green }
+
+# ---------------------------------------------------------------- 5.2 防拆兜底任务（SYSTEM，每分钟自愈）
+# 这是"学生把服务也干掉"之后的最后一条命：每分钟以 SYSTEM 检查一次，
+# 服务被删除 → 重新注册并启动；服务被停 → 启动；小助手不在 → 拉起。
+# 卸载脚本会先删掉它（否则卸载后它又会把服务拉回来）。
+$guardTask = 'LabGuard\Guard'
+# schtasks 的 /tr 要求"外层双引号 + 内层单引号"：路径含空格时只有这样它才不会把参数撕开
+$guardCmd  = "'" + $svcExe + "' --ensure"
+if ($DryRun) {
+    Write-Host ('  · 将创建防拆兜底任务 ' + $guardTask + '：' + $guardCmd)
+} else {
+    & schtasks.exe /create /tn $guardTask /tr $guardCmd /sc minute /mo 1 /ru 'SYSTEM' /rl highest /f | Out-Null
+    Write-Host "已创建防拆兜底任务 $guardTask（SYSTEM，每分钟自愈）。" -ForegroundColor Green
+    Write-Host '  （标准学生删不掉它：任务以 SYSTEM 注册；管理员仍可用卸载脚本正常删除。）' -ForegroundColor Gray
+}
 
 # ---------------------------------------------------------------- 5.5 无人值守配置（可选）
 if ($Password -or $ConfigJson -or $Dns) {

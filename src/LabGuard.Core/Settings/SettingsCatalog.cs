@@ -370,6 +370,35 @@ namespace LabGuard.Core.Settings
                 "杀毒软件误删程序文件时会触发锁定（关键文件缺失时锁定）",
                 c => c.Watchdog.LockOnIntegrityFailure, (c, v) => c.Watchdog.LockOnIntegrityFailure = (bool)v));
 
+            // ============================================================ 14 进程防拆加固
+            list.Add(Bool("14、进程防拆加固", "AntiTamper.Enabled", "启用进程防拆加固（总开关）",
+                "对付「学生从任务管理器一键杀掉 LabGuard」：进程硬化 + 秒级复活 + 兜底任务 + 反复被杀告警，四层一起开",
+                c => c.AntiTamper.Enabled, (c, v) => c.AntiTamper.Enabled = (bool)v));
+            list.Add(Bool("14、进程防拆加固", "AntiTamper.HardenProcessDacl", "① 进程加锁：只有 SYSTEM/管理员能结束",
+                "给小助手进程套一层 DACL：SYSTEM 与管理员完全控制，当前登录用户只剩「查看」权。" +
+                "效果：标准用户在任务管理器点「结束任务」收到「拒绝访问」。" +
+                "**边界**：学生本来就是管理员时挡不住（管理员持有 SeDebugPrivilege 会绕过 DACL），" +
+                "那种机房靠下面②③两层的「杀掉就立刻回来」兜住。详见 docs/07。",
+                c => c.AntiTamper.HardenProcessDacl, (c, v) => c.AntiTamper.HardenProcessDacl = (bool)v));
+            list.Add(Bool("14、进程防拆加固", "AntiTamper.FastRestart", "② 秒级复活：进程一退出立刻重新拉起",
+                "服务用进程句柄等待（而不是等轮询间隔），小助手一被杀就马上拉起，学生看到的是「杀不掉」。",
+                c => c.AntiTamper.FastRestart, (c, v) => c.AntiTamper.FastRestart = (bool)v));
+            list.Add(Bool("14、进程防拆加固", "AntiTamper.ScheduledTaskGuard", "③ 兜底计划任务：服务被停/被删也能自愈",
+                "SYSTEM 身份每分钟检查一次：服务不在就 net start，小助手不在就拉起。" +
+                "安装时创建任务「LabGuard\\Guard」，卸载时一并删除。",
+                c => c.AntiTamper.ScheduledTaskGuard, (c, v) => c.AntiTamper.ScheduledTaskGuard = (bool)v));
+            list.Add(Bool("14、进程防拆加固", "AntiTamper.BlockKillTools", "④ 拦住常见「杀进程工具」",
+                "把 Process Hacker / SystemInformer / Process Explorer / taskkill 等纳入违规软件拦截（用「进程工具」清单）",
+                c => c.AntiTamper.BlockKillTools, (c, v) => c.AntiTamper.BlockKillTools = (bool)v));
+            list.Add(Bool("14、进程防拆加固", "AntiTamper.AlertOnRepeatedKill", "⑤ 反复被杀时告警（老师看得见）",
+                "同一台机器短时间内反复被结束进程 → 记入日志与 tamper 标记，心跳上报时一并带给教师机",
+                c => c.AntiTamper.AlertOnRepeatedKill, (c, v) => c.AntiTamper.AlertOnRepeatedKill = (bool)v));
+            list.Add(Number("14、进程防拆加固", "AntiTamper.RepeatKillWindowMinutes", "⑤ 统计窗口（分钟）",
+                "在这个时间窗内被杀够次数才算「有人在搞事」", 1, 60,
+                c => c.AntiTamper.RepeatKillWindowMinutes, (c, v) => c.AntiTamper.RepeatKillWindowMinutes = (int)v));
+            list.Add(Number("14、进程防拆加固", "AntiTamper.RepeatKillCount", "⑤ 被杀多少次算异常",
+                null, 2, 100, c => c.AntiTamper.RepeatKillCount, (c, v) => c.AntiTamper.RepeatKillCount = (int)v));
+
             return list;
         }
 

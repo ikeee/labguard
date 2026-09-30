@@ -30,6 +30,16 @@ namespace LabGuard.Service
                 return;
             }
 
+            // 兜底自愈（一次性）：由 SYSTEM 计划任务「LabGuard\Guard」每分钟调用。
+            // 服务被删/被停 → 重新注册并启动；小助手不在 → 拉起。详见 GuardService.EnsureOnce。
+            if (args != null && args.Length > 0 && args[0] == "--ensure")
+            {
+                Log.EchoToConsole = true;
+                int handled = GuardService.EnsureOnce();
+                Console.WriteLine("兜底自愈完成：本次处理了 " + handled + " 项。");
+                return;
+            }
+
             // 文件自愈（一次性）：被删/被改的程序文件从系统级备份副本恢复。安装程序与排障都能用。
             if (args != null && args.Length > 0 && args[0] == "--restore-files")
             {

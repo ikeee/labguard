@@ -43,6 +43,8 @@ if (Test-Path $uninstaller) {
     Write-Host '未找到 LabGuard.Uninstall.exe，仅清理服务与自启动。' -ForegroundColor Yellow
 }
 
+# 先删"防拆兜底任务"，否则它会在卸载过程中把服务又拉起来（每分钟一次）
+& schtasks.exe /delete /tn 'LabGuard\Guard' /f 2>$null | Out-Null
 & schtasks.exe /delete /tn 'LabGuard\Agent' /f 2>$null | Out-Null
 if (Get-Service -Name 'LabGuardSvc' -ErrorAction SilentlyContinue) { & sc.exe delete LabGuardSvc | Out-Null }
 

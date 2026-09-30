@@ -41,7 +41,7 @@ namespace LabGuard.Core.Settings
                 new Preset
                 {
                     Name = "只管电子教室，其它不干预",
-                    Description = "只做电子教室保护 + 断网提示（不弹遮罩）；U 盘/下载/浏览器/任务栏全部放开",
+                    Description = "只做电子教室保护 + 断网提示（不弹遮罩）；U 盘/下载/浏览器/任务栏全部放开（仍防被杀）",
                     Apply = c =>
                     {
                         c.Enabled = true;
@@ -136,6 +136,15 @@ namespace LabGuard.Core.Settings
             c.RegistryAcl.Enabled = true;
             c.Watchdog.Enabled = true;
             c.Watchdog.RebootOnServiceFailure = false;
+            // 进程防拆：默认四层全开（机器上是管理员学生时，靠"秒级复活 + 兜底任务"兜住）
+            c.AntiTamper.Enabled = true;
+            c.AntiTamper.HardenProcessDacl = true;
+            c.AntiTamper.FastRestart = true;
+            c.AntiTamper.ScheduledTaskGuard = true;
+            c.AntiTamper.BlockKillTools = true;
+            c.AntiTamper.AlertOnRepeatedKill = true;
+            c.AntiTamper.RepeatKillWindowMinutes = 5;
+            c.AntiTamper.RepeatKillCount = 3;
         }
     }
 }
