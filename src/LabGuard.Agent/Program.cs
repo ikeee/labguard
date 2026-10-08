@@ -53,6 +53,7 @@ namespace LabGuard.Agent
                 DateTime deadline = DateTime.Now.AddSeconds(Math.Max(3, seconds));
                 var cfg = ConfigStore.Load();
                 var mask = new LabGuard.Core.UI.DisconnectMaskForm();
+                mask.ApplyNetworkPolicy(cfg.Network);      // 预览的就是老师真机上会看到的（含"是否提示解锁方式"）
                 mask.ShowMask("机位 DEMO-01", "网络已断开（预览）", "请插回网线或启用网络连接",
                     string.IsNullOrEmpty(cfg.PasswordHash) ? PasswordHasher.Create("a1b2c3") : cfg.PasswordHash,
                     true, true,
@@ -93,11 +94,13 @@ namespace LabGuard.Agent
                 bool noLock = HasArg(args, "--no-lock");
 
                 var mask = new LabGuard.Core.UI.DisconnectMaskForm();
+                mask.ApplyNetworkPolicy(ConfigStore.Load().Network);   // 其余项（含是否提示解锁方式）跟随配置
                 // 手势演练**默认真锁键鼠**：正因为 BlockInput 期间低级键盘钩子照常工作（见 docs/06），
                 // 手势才能在硬锁下解锁——这是本方案相对密码框方案的核心优势，就该在演练里被验到。
                 // （兜底：InputLock 有 10 秒看门狗，本演练也有 60 秒超时自动收尾。）
                 mask.InputLockMode = noLock ? LabGuard.Core.Interop.InputLock.ModeOff
                                             : LabGuard.Core.Interop.InputLock.ModeOn;
+                // 演练只走一条通道（由 --gesture 决定），覆盖配置里的"双通道"以免混淆判定
                 mask.TeacherUnlockMode = gestureMode ? "Gesture" : "Password";
                 string how = gestureMode
                     ? "按 Pause → ↑↑↓↓←→←→"

@@ -91,9 +91,32 @@ namespace LabGuard.Core.UI
         public int GestureWindowSeconds { get; set; } = 5;
         /// <summary>是否显示进度点。**学生也看得见**，默认关。</summary>
         public bool GestureFeedback { get; set; }
+        /// <summary>
+        /// 是否在遮罩上提示老师怎么解除（手势序列 / 连按 Esc 输密码）。默认**关**。
+        /// 遮罩是给学生看的，印上解锁方式等于把钥匙挂在锁上。
+        /// </summary>
+        public bool ShowTeacherHint { get; set; }
 
         private UnlockGesture _gesture;
         private DateTime _gestureHintUntil = DateTime.MinValue;
+
+        /// <summary>
+        /// 把「老师怎么解锁 / 遮罩上显示什么」这几项从配置一次性注入。
+        /// **托盘、设置程序的截图预览、Agent 的 --preview-mask 三处共用**——
+        /// 以前是三处各写一遍，2026-10-08 那次"遮罩泄露解锁序列"就是因为新属性只在
+        /// 某几处注入（默认值恰好是安全的，才没炸）。集中到一处后，新增属性不会再漏。
+        /// </summary>
+        public void ApplyNetworkPolicy(LabGuard.Core.Config.NetworkSettings n)
+        {
+            if (n == null) return;
+            TeacherUnlockMode = string.IsNullOrEmpty(n.TeacherUnlockMode) ? "Both" : n.TeacherUnlockMode;
+            GestureArmKey = string.IsNullOrEmpty(n.UnlockGestureArmKey) ? "Pause" : n.UnlockGestureArmKey;
+            GestureSequence = string.IsNullOrEmpty(n.UnlockGestureSequence)
+                ? "U,U,D,D,L,R,L,R" : n.UnlockGestureSequence;
+            GestureWindowSeconds = n.UnlockGestureWindowSeconds < 1 ? 5 : n.UnlockGestureWindowSeconds;
+            GestureFeedback = n.UnlockGestureFeedback;
+            ShowTeacherHint = n.MaskShowTeacherHint;
+        }
 
         /// <summary>手势通道是否启用。</summary>
         private bool GestureOn { get { return TeacherUnlockMode != "Password"; } }
@@ -198,8 +221,9 @@ namespace LabGuard.Core.UI
             // 手势反馈：进度点（只在开了 UnlockGestureFeedback 时显示，因为学生也看得见）
             if (GestureFeedback && _gesture != null && _gesture.Armed)
                 text += "   " + ProgressDots();
-            // 失败/超时的极轻提示：老师按错了要能知道，否则会以为机器坏了
-            if (_gestureHintUntil > DateTime.Now)
+            // 失败/超时的极轻提示：老师按错了要能知道，否则会以为机器坏了。
+            // 但这也是给学生的侧信道（"哦，原来有手势这回事"），所以跟解锁提示同一个开关。
+            if (ShowTeacherHint && _gestureHintUntil > DateTime.Now)
                 text += "   手势未识别";
             _number.Text = text;
         }
@@ -207,12 +231,32 @@ namespace LabGuard.Core.UI
         /// <summary>提示老师怎么解除——按当前启用的通道给出对应文案。</summary>
         private string TeacherTip()
         {
+            return BuildTeacherTip(ShowTeacherHint, GestureOn, PasswordOn, GestureArmKey);
+        }
+
+        /// <summary>
+        /// 遮罩底部那句"老师怎么解除"的文案。**抽成静态纯函数就是为了自检能断言**——
+        /// 历史事件：这句曾经无条件把解锁手势序列印在遮罩上（学生照着屏幕就能解），
+        /// 属于"把钥匙挂在锁上"。现在默认不显示任何解锁方式，只说网络恢复后会自动消失。
+        /// </summary>
+        public static string BuildTeacherTip(bool showHint, bool gestureOn, bool passwordOn, string armKey)
+        {
             const string auto = "恢复网络后 10 秒内自动消失";
+            if (!showHint) return "（" + auto + "）";      // 默认：不透露任何解锁通道
+
             string gesture = "老师：按 Pause 后按 ↑↑↓↓←→←→ 解除";
-            if (GestureArmKey == "ScrollLock") gesture = "老师：按 Scroll Lock 后按 ↑↑↓↓←→←→ 解除";
-            if (GestureOn && PasswordOn) return "（" + auto + "；" + gesture + "；或连按 5 次 Esc 输密码）";
-            if (GestureOn) return "（" + auto + "；" + gesture + "）";
+            if (armKey == "ScrollLock") gesture = "老师：按 Scroll Lock 后按 ↑↑↓↓←→←→ 解除";
+            if (gestureOn && passwordOn) return "（" + auto + "；" + gesture + "；或连按 5 次 Esc 输密码）";
+            if (gestureOn) return "（" + auto + "；" + gesture + "）";
             return "（" + auto + "；老师连续按 5 次 Esc 可输入密码解除）";
+        }
+
+        /// <summary>自检用：这句文案有没有泄露解锁方式（手势序列 / Esc+密码）。</summary>
+        public static bool TipLeaksUnlockMethod(string tip)
+        {
+            if (string.IsNullOrEmpty(tip)) return false;
+            return tip.Contains("Pause") || tip.Contains("Scroll Lock") || tip.Contains("↑") ||
+                   tip.Contains("Esc") || tip.Contains("密码") || tip.Contains("手势");
         }
 
         /// <summary>进度点：已匹配的画 ●，未匹配的画 ○。</summary>

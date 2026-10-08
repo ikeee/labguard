@@ -50,6 +50,11 @@ namespace LabGuard.Settings
                 {
                     // 截图模式不锁输入（否则渲染这几百毫秒里会把操作者的键鼠一起锁住）
                     mask.InputLockMode = LabGuard.Core.Interop.InputLock.ModeOff;
+                    // 跟随当前配置：老师勾了"显示解锁提示"预览里才看得到，默认和学生看到的一样干净
+                    mask.ApplyNetworkPolicy(config.Network);
+                    // --with-hint：只为截图/文档临时打开"提示老师怎么解除"，**不写回配置**。
+                    // 用来出"打开开关后长什么样"的对照图（默认那张应是干净的）。
+                    if (Array.IndexOf(args, "--with-hint") >= 0) mask.ShowTeacherHint = true;
                     LabGuard.Core.UI.UiCapture.ShowOffScreen(mask);
                     mask.ShowMask("机位 1001", "网络已断开",
                         "检测到：以太网 网卡已断开（网线被拔掉，或网卡被禁用）\r\n请插回网线或启用网络连接",

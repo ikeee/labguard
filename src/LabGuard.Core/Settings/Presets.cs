@@ -109,6 +109,7 @@ namespace LabGuard.Core.Settings
             c.Network.UnlockGestureSequence = "U,U,D,D,L,R,L,R";
             c.Network.UnlockGestureWindowSeconds = 5;
             c.Network.UnlockGestureFeedback = false;
+            c.Network.MaskShowTeacherHint = false;   // 遮罩上不印解锁方式（学生看得见）
             c.Network.DisconnectMaskShowElapsed = true;
             c.Network.DisconnectSoundAfterSeconds = 60;
             c.Network.DisconnectSoundTimes = 3;

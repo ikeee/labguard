@@ -144,6 +144,13 @@ namespace LabGuard.Core.Config
         /// <summary>是否在遮罩上显示手势进度点。**学生也看得见**，默认关。</summary>
         public bool UnlockGestureFeedback { get; set; } = false;
         /// <summary>
+        /// 遮罩上是否**提示老师怎么解除**（手势序列 / 连按 Esc 输密码）。默认**关**。
+        /// 关键：遮罩是给学生看的，把解锁方式印上去等于把钥匙挂在锁上 ——
+        /// 学生照着屏幕就能解。关掉后遮罩只说"恢复网络后自动消失"，老师按自己的方式解除即可。
+        /// 只有新手老师培训期才值得临时打开（方法另见 docs/06 与设置程序里的说明）。
+        /// </summary>
+        public bool MaskShowTeacherHint { get; set; } = false;
+        /// <summary>
         /// 老师解除遮罩后**是否顺带暂停全部监控**（默认开：否则 10 秒后遮罩又弹出来）。
         /// 关掉则只解除本次遮罩、USB/软件拦截等继续生效（网络 Guard 自己还会再弹遮罩，
         /// 适合"网线修好后就自动恢复"的场景）。注意：无论本项是开是关，

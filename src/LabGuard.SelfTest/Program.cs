@@ -383,6 +383,53 @@ namespace LabGuard.SelfTest
                 new GuardConfig().Network.PauseMonitoringOnTeacherUnlock &&
                 new GuardConfig().ResumeAfterMinutes == 120);
 
+            // ---------------------------------------------------------------- [5.8] 遮罩不得泄露解锁方式
+            // 真机反馈（2026-10-08）：遮罩上直接印着「老师：按 Pause 后按 ↑↑↓↓←→←→ 解除」，
+            // 学生照着屏幕就能解锁 —— 等于把钥匙挂在锁上。规则：遮罩默认不透露任何解锁通道。
+            Console.WriteLine("[5.8] 遮罩不泄露解锁方式（不把钥匙挂在锁上）");
+            Func<bool, bool, bool, string, string> tip = LabGuard.Core.UI.DisconnectMaskForm.BuildTeacherTip;
+            Func<string, bool> leaks = LabGuard.Core.UI.DisconnectMaskForm.TipLeaksUnlockMethod;
+            string tipDefault = tip(false, true, true, "Pause");
+            Check("默认（双通道）遮罩底部不泄露任何解锁方式", !leaks(tipDefault));
+            Check("默认文案仍说清\"网络恢复后会自动消失\"（学生知道该怎么办）",
+                tipDefault.Contains("恢复网络后 10 秒内自动消失"));
+            Check("纯手势通道 + 关闭提示 → 也不泄露", !leaks(tip(false, true, false, "Pause")));
+            Check("纯密码通道 + 关闭提示 → 也不泄露", !leaks(tip(false, false, true, "Pause")));
+            Check("ScrollLock 激活键 + 关闭提示 → 也不泄露", !leaks(tip(false, true, true, "ScrollLock")));
+            Check("关提示时三种通道文案完全一致（不因通道不同泄露信息）",
+                tip(false, true, true, "ScrollLock") == tip(false, false, false, "Pause"));
+            Check("老师主动打开后才显示手势序列", leaks(tip(true, true, false, "Pause")) &&
+                tip(true, true, false, "Pause").Contains("↑↑↓↓←→←→"));
+            Check("老师主动打开后：双通道会把密码通道也说出来",
+                tip(true, true, true, "Pause").Contains("Esc"));
+            Check("激活键为 ScrollLock 时提示文案跟着变（不说 Pause）",
+                tip(true, true, false, "ScrollLock").Contains("Scroll Lock") &&
+                !tip(true, true, false, "ScrollLock").Contains("Pause"));
+            Check("泄露判定认得各种形态（Pause / ScrollLock / ↑ / Esc / 密码 / 手势）",
+                leaks("按 Pause 解除") && leaks("按 Scroll Lock 解除") && leaks("↑↑↓↓←→←→") &&
+                leaks("连按 5 次 Esc") && leaks("输入密码") && leaks("手势未识别") &&
+                !leaks("（恢复网络后 10 秒内自动消失）"));
+            Check("新增配置默认合理：遮罩默认不提示解锁方式 / 不显示进度点",
+                !new GuardConfig().Network.MaskShowTeacherHint &&
+                !new GuardConfig().Network.UnlockGestureFeedback);
+            // 注入逻辑集中在一处（托盘 / 设置截图预览 / Agent --preview-mask 三处共用）：
+            // 以前三处各写一遍，新属性漏注入过一次（2026-10-08）。
+            var savedLevel = Log.MinLevel;      // 构造窗体会打一条"窗体已就绪"日志，别让它混进自检输出
+            Log.MinLevel = LogLevel.Error;
+            try
+            {
+                var probe = new LabGuard.Core.UI.DisconnectMaskForm();
+                var probeCfg = new GuardConfig().Network;
+                probeCfg.MaskShowTeacherHint = true;
+                probeCfg.UnlockGestureSequence = "L,L,R,R";
+                probe.ApplyNetworkPolicy(probeCfg);
+                Check("配置注入：一次调用把整组「老师解锁方式」带进遮罩（三处共用，杜绝漏注入）",
+                    probe.ShowTeacherHint && probe.GestureSequence == "L,L,R,R");
+                probe.Dispose();
+            }
+            catch (Exception ex) { Check("配置注入：构造遮罩并注入配置不抛异常（" + ex.Message + "）", false); }
+            finally { Log.MinLevel = savedLevel; }
+
             Console.WriteLine("[5.3] 断网即时归因（遮罩/日志要说清检测到什么）");
             Check("网卡消失 → 说清了网卡被禁用或拔掉",
                 NetworkGuard.DescribeDown(false, false, null).Contains("消失"));

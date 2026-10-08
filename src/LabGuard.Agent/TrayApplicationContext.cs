@@ -147,13 +147,8 @@ namespace LabGuard.Agent
         /// </summary>
         private void ApplyTeacherUnlockMode()
         {
-            var n = _config.Network;
-            _disconnectMask.TeacherUnlockMode = string.IsNullOrEmpty(n.TeacherUnlockMode) ? "Both" : n.TeacherUnlockMode;
-            _disconnectMask.GestureArmKey = string.IsNullOrEmpty(n.UnlockGestureArmKey) ? "Pause" : n.UnlockGestureArmKey;
-            _disconnectMask.GestureSequence = string.IsNullOrEmpty(n.UnlockGestureSequence)
-                ? "U,U,D,D,L,R,L,R" : n.UnlockGestureSequence;
-            _disconnectMask.GestureWindowSeconds = n.UnlockGestureWindowSeconds < 1 ? 5 : n.UnlockGestureWindowSeconds;
-            _disconnectMask.GestureFeedback = n.UnlockGestureFeedback;
+            // 注入逻辑集中在 DisconnectMaskForm.ApplyNetworkPolicy（托盘/预览/截图三处共用，避免漏改）
+            _disconnectMask.ApplyNetworkPolicy(_config.Network);
         }
 
         private void StartEngine()

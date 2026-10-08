@@ -146,6 +146,13 @@ namespace LabGuard.Core.Settings
                 "超时自动重置；太长等于给旁观者慢慢试的机会",
                 1, 60, c => c.Network.UnlockGestureWindowSeconds,
                 (c, v) => c.Network.UnlockGestureWindowSeconds = (int)v));
+            list.Add(Bool("2、网络与防火墙", "Network.MaskShowTeacherHint", "遮罩上提示老师怎么解除",
+                "默认**关**：遮罩是给学生看的，把解锁方式（Pause + ↑↑↓↓←→←→、连按 Esc 输密码）印上去\n" +
+                "等于把钥匙挂在锁上，学生照着屏幕就能解。关掉后遮罩只说\"恢复网络后自动消失\"。\n" +
+                "只有新手老师培训期才值得临时打开。同一开关也管\"手势未识别\"这句反馈——\n" +
+                "它会让旁观者知道存在手势通道。\n" +
+                "另：默认序列 ↑↑↓↓←→←→ 是公开梗，**建议改成自己的序列**（上面「解锁序列」）。",
+                c => c.Network.MaskShowTeacherHint, (c, v) => c.Network.MaskShowTeacherHint = (bool)v));
             list.Add(Bool("2、网络与防火墙", "Network.UnlockGestureFeedback", "遮罩上显示手势进度点",
                 "注意：学生也看得见这些点，等于公开演示解锁过程；默认关",
                 c => c.Network.UnlockGestureFeedback, (c, v) => c.Network.UnlockGestureFeedback = (bool)v));
