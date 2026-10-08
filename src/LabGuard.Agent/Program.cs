@@ -63,7 +63,7 @@ namespace LabGuard.Agent
                                + " · 真实场景：插回网线后 10 秒内自动恢复";
                     },
                     () => DateTime.Now >= deadline,
-                    () => { });
+                    channel => { });
                 // 自己泵消息：遮罩按"网络已恢复"条件自动隐藏，这里等到截止时间后收尾
                 while (DateTime.Now < deadline.AddSeconds(1))
                 {
@@ -107,7 +107,7 @@ namespace LabGuard.Agent
                     PasswordHasher.Create(drillPassword), false, true,
                     () => "演练中：" + how,
                     () => false,                                               // 演练不靠网络恢复
-                    () => { teacherUnlocked = true; });                        // 老师途径解锁时置位
+                    channel => { teacherUnlocked = true; });                    // 老师途径解锁时置位（channel：手势/密码）
 
                 Console.WriteLine("等待老师操作：" + how + "（60 秒内，"
                     + (noLock ? "未锁键鼠" : "已硬锁键鼠") + "）。");

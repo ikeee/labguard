@@ -40,6 +40,32 @@ namespace LabGuard.Service
                 return;
             }
 
+            // 恢复监控（一次性）：清掉"老师已暂停"标记。
+            // 后路：暂停期间小助手若被杀，老师可能连托盘都没有（点不到"启动监控"），用它一键恢复。
+            if (args != null && args.Length > 0 && args[0] == "--resume")
+            {
+                Log.EchoToConsole = true;
+                string rep;
+                int rc = GuardService.ResumeAll(out rep);
+                Console.WriteLine(rep);
+                Environment.ExitCode = rc;
+                return;
+            }
+
+            // 演练（一次性）：验证"老师暂停监控期间，学生杀掉小助手还会不会被拉起"。
+            // 2026-10-08 真机事故的回归入口：那次杀掉后 8 小时没人管。退出码 0=PASS / 1=FAIL / 2=不适用。
+            if (args != null && args.Length > 0 && args[0] == "--pause-drill")
+            {
+                Log.EchoToConsole = true;
+                int seconds = 20;
+                if (args.Length > 1) int.TryParse(args[1], out seconds);
+                string report;
+                int rc = GuardService.PauseDrill(seconds, out report);
+                Console.WriteLine("暂停期防拆演练：" + report);
+                Environment.ExitCode = rc;
+                return;
+            }
+
             // 文件自愈（一次性）：被删/被改的程序文件从系统级备份副本恢复。安装程序与排障都能用。
             if (args != null && args.Length > 0 && args[0] == "--restore-files")
             {

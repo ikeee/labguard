@@ -30,7 +30,7 @@ namespace LabGuard.Core.UI
         private Image _background;
         private Func<bool> _networkRestored;
         private Func<string> _elapsedText;
-        private Action _teacherUnlock;
+        private Action<string> _teacherUnlock;   // 参数是解除通道："手势" / "密码"
         private string _passwordHash;
         private IntPtr _hook = IntPtr.Zero;
         private NativeMethods.LowLevelKeyboardProc _proc;
@@ -225,7 +225,7 @@ namespace LabGuard.Core.UI
 
         public void ShowMask(string machineNumber, string headLine, string advice, string passwordHash,
             bool randomWallpaper, bool showElapsed, Func<string> elapsedText, Func<bool> networkRestored,
-            Action teacherUnlock)
+            Action<string> teacherUnlock)
         {
             // 不能用 InvokeRequired：句柄未创建时它返回 false（见 _uiThreadId）。按线程 ID 判断才可靠。
             if (Thread.CurrentThread.ManagedThreadId != _uiThreadId)
@@ -486,7 +486,7 @@ namespace LabGuard.Core.UI
             if (_closed) return;
             Log.Warn("老师用按键手势解除了断网遮罩");
             AutoClose("老师已用按键手势解除");
-            try { _teacherUnlock?.Invoke(); } catch { }
+            try { _teacherUnlock?.Invoke("手势"); } catch { }
         }
 
         private void AskTeacherPassword()
@@ -519,7 +519,7 @@ namespace LabGuard.Core.UI
             {
                 Log.Warn("老师用密码解除了断网遮罩");
                 AutoClose("老师已用密码解除");
-                try { _teacherUnlock?.Invoke(); } catch { }
+                try { _teacherUnlock?.Invoke("密码"); } catch { }
                 return;
             }
             // 关键：对话框开着这段时间，遮罩可能已经自己解除了（学生把网线插回来了）。

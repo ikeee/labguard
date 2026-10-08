@@ -20,8 +20,12 @@ namespace LabGuard.Core.Config
         public int ConfirmDelaySeconds { get; set; } = 10;
         /// <summary>已安装/已启用管控的总开关；关闭后各 Guard 不再纠正系统状态。</summary>
         public bool Enabled { get; set; } = true;
-        /// <summary>退出/暂停后自动恢复管控的时间（分钟），0 = 不自动恢复。</summary>
-        public int ResumeAfterMinutes { get; set; } = 0;
+        /// <summary>
+        /// 退出/暂停后自动恢复管控的时间（分钟），0 = 不自动恢复（需老师手动）。
+        /// 默认 120：真机教训是老师解锁遮罩后**忘了自己还处在暂停态**，机器一整天裸奔；
+        /// 取 2 小时是折中——够长（不会在一节课中途自己恢复），又能在跨节课/午休后自愈。
+        /// </summary>
+        public int ResumeAfterMinutes { get; set; } = 120;
         /// <summary>程序启动后多少秒才开始检测（避免开机误判，为 120 秒）。</summary>
         public int StartDelaySeconds { get; set; } = 120;
 
@@ -139,6 +143,13 @@ namespace LabGuard.Core.Config
         public int UnlockGestureWindowSeconds { get; set; } = 5;
         /// <summary>是否在遮罩上显示手势进度点。**学生也看得见**，默认关。</summary>
         public bool UnlockGestureFeedback { get; set; } = false;
+        /// <summary>
+        /// 老师解除遮罩后**是否顺带暂停全部监控**（默认开：否则 10 秒后遮罩又弹出来）。
+        /// 关掉则只解除本次遮罩、USB/软件拦截等继续生效（网络 Guard 自己还会再弹遮罩，
+        /// 适合"网线修好后就自动恢复"的场景）。注意：无论本项是开是关，
+        /// **进程守护都不受影响**（见 <c>AntiTamper.KeepAliveWhenPaused</c>）。
+        /// </summary>
+        public bool PauseMonitoringOnTeacherUnlock { get; set; } = true;
         /// <summary>只监控这些网卡（填网卡名，一行一个；留空 = 自动选择联网网卡）。</summary>
         public List<string> WatchedInterfaces { get; set; } = new List<string>();
         /// <summary>
@@ -378,5 +389,13 @@ namespace LabGuard.Core.Config
         /// 用现有的「进程/内核/注册表工具」清单，不新增一套匹配逻辑。
         /// </summary>
         public bool BlockKillTools { get; set; } = true;
+        /// <summary>
+        /// 「老师暂停监控」期间**仍然守护进程**（小助手被杀照样拉起，只是以"已暂停"形态运行、不启用策略）。
+        /// 真机事故教训（2026-10-08）：老师手势解锁断网遮罩 → 写入 paused.flag →
+        /// 服务/兜底任务三处都因 IsPaused 直接 return → 学生杀掉小助手后**永远没人拉起**，
+        /// 而且托盘没了、老师点不到"启动监控"，只能手工跑设置程序 → 死锁。
+        /// 暂停的语义应当是"停止管控策略"，不是"允许别人杀掉我的进程"。默认开。
+        /// </summary>
+        public bool KeepAliveWhenPaused { get; set; } = true;
     }
 }

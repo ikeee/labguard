@@ -298,16 +298,19 @@ namespace LabGuard.Agent
 
         void IAlertScreen.ShowDisconnectMask(string machineNumber, string headLine, string advice, string passwordHash,
             bool randomWallpaper, bool showElapsed, Func<string> elapsedText, Func<bool> networkRestored,
-            Action teacherUnlock)
+            Action<string> teacherUnlock)
         {
             _disconnectMask.ShowMask(machineNumber, headLine, advice,
                 string.IsNullOrEmpty(passwordHash) ? _config.PasswordHash : passwordHash,
                 randomWallpaper, showElapsed, elapsedText, networkRestored,
-                () =>
+                channel =>
                 {
-                    // 老师用密码解除 → 暂停监控（否则 10 秒后又被弹出来）
-                    try { teacherUnlock?.Invoke(); } catch { }
-                    PauseBecauseTeacherUnlock();
+                    if (string.IsNullOrEmpty(channel)) channel = "密码";
+                    try { teacherUnlock?.Invoke(channel); } catch { }
+                    // 默认"解除遮罩 = 暂停监控"（否则 10 秒后又被弹出来）；
+                    // 但老师可以在设置里关掉，只解除本次遮罩、继续管 U 盘/软件。
+                    if (_config.Network.PauseMonitoringOnTeacherUnlock) PauseBecauseTeacherUnlock(channel);
+                    else Balloon("LabGuard", "已按老师" + channel + "解除断网遮罩，监控继续运行。");
                 });
         }
 
@@ -328,12 +331,13 @@ namespace LabGuard.Agent
             });
         }
 
-        private void PauseBecauseTeacherUnlock()
+        private void PauseBecauseTeacherUnlock(string channel)
         {
             _engine.Stop(markPaused: true);
             _paused = true;
             UpdateTrayText();
-            Balloon("LabGuard", "已按老师密码解除断网遮罩，监控已暂停（设置里保存或重启小助手可恢复）。");
+            Balloon("LabGuard", "已按老师" + channel + "解除断网遮罩，监控已暂停。" +
+                "恢复办法：托盘「启动监控」，或运行 LabGuard.Service.exe --resume（进程守护不受影响，仍会一直看住小助手）。");
         }
 
         protected override void Dispose(bool disposing)

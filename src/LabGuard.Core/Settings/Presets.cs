@@ -145,6 +145,10 @@ namespace LabGuard.Core.Settings
             c.AntiTamper.AlertOnRepeatedKill = true;
             c.AntiTamper.RepeatKillWindowMinutes = 5;
             c.AntiTamper.RepeatKillCount = 3;
+            // 暂停只停策略、不停进程守护（真机事故教训，见 AntiTamper.KeepAliveWhenPaused 注释）
+            c.AntiTamper.KeepAliveWhenPaused = true;
+            c.Network.PauseMonitoringOnTeacherUnlock = true;
+            c.ResumeAfterMinutes = 120;
         }
     }
 }

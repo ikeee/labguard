@@ -343,6 +343,46 @@ namespace LabGuard.SelfTest
                 System.Array.IndexOf(LabGuard.Core.Data.DefaultBlocklists.KillTools, "SystemInformer") >= 0 &&
                 System.Array.IndexOf(LabGuard.Core.Data.DefaultBlocklists.KillTools, "taskkill") >= 0);
 
+            // ---------------------------------------------------------------- [5.7] 暂停 ≠ 放弃进程守护
+            // 真机事故回归（2026-10-08）：老师手势解锁断网遮罩 → 写 paused.flag →
+            // 服务/兜底三处都因 IsPaused 直接 return → 学生杀掉小助手后 8 小时没人拉起，
+            // 且托盘没了、老师点不到「启动监控」→ 死锁。规则：暂停只停策略，不停进程守护。
+            Console.WriteLine("[5.7] 「老师暂停」与「进程守护」解耦（暂停期间被杀也要复活）");
+            var cfgA = new GuardConfig();                       // 默认：防拆开 + 暂停也守护
+            Check("默认：暂停期间仍然守护小助手进程",
+                LabGuard.Core.Guards.WatchdogGuard.ShouldKeepAgentAlive(cfgA, true));
+            Check("默认：未暂停时当然也守护",
+                LabGuard.Core.Guards.WatchdogGuard.ShouldKeepAgentAlive(cfgA, false));
+            var cfgB = new GuardConfig();
+            cfgB.AntiTamper.KeepAliveWhenPaused = false;
+            Check("关掉「暂停也守护」后：暂停期间按设计不再拉起（老师要的就是彻底停）",
+                !LabGuard.Core.Guards.WatchdogGuard.ShouldKeepAgentAlive(cfgB, true));
+            Check("关掉「暂停也守护」不影响未暂停时的守护",
+                LabGuard.Core.Guards.WatchdogGuard.ShouldKeepAgentAlive(cfgB, false));
+            var cfgC = new GuardConfig();
+            cfgC.Watchdog.Enabled = false; cfgC.AntiTamper.Enabled = false;
+            Check("两个守护开关都关 = 不守护（尊重老师的配置）",
+                !LabGuard.Core.Guards.WatchdogGuard.ShouldKeepAgentAlive(cfgC, false));
+            var cfgD = new GuardConfig();
+            cfgD.Watchdog.Enabled = false;                      // 只开防拆（机房常见："只开网络组 + 防拆"）
+            Check("只开「进程防拆」、关「互相守护」时仍然守护",
+                LabGuard.Core.Guards.WatchdogGuard.ShouldKeepAgentAlive(cfgD, true));
+            Check("空配置不会抛异常",
+                !LabGuard.Core.Guards.WatchdogGuard.ShouldKeepAgentAlive(null, true));
+
+            // 用可控时间断言（真机教训：一天刷了 480 行同样的 INFO，老师根本不会看）
+            string tmpStamp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "labguard-selftest-pausehint.stamp");
+            if (System.IO.File.Exists(tmpStamp)) System.IO.File.Delete(tmpStamp);
+            Check("暂停提示有限频：10 分钟内只提示一次，到点再提示",
+                LabGuard.Core.Guards.WatchdogGuard.PauseHintDue(10, new DateTime(2026, 1, 1, 10, 0, 0), tmpStamp) &&
+                !LabGuard.Core.Guards.WatchdogGuard.PauseHintDue(10, new DateTime(2026, 1, 1, 10, 5, 0), tmpStamp) &&
+                LabGuard.Core.Guards.WatchdogGuard.PauseHintDue(10, new DateTime(2026, 1, 1, 10, 11, 0), tmpStamp));
+            try { if (System.IO.File.Exists(tmpStamp)) System.IO.File.Delete(tmpStamp); } catch { }
+            Check("新增配置默认合理：暂停也守护 / 解除遮罩默认暂停监控 / 暂停 120 分钟自动恢复",
+                new GuardConfig().AntiTamper.KeepAliveWhenPaused &&
+                new GuardConfig().Network.PauseMonitoringOnTeacherUnlock &&
+                new GuardConfig().ResumeAfterMinutes == 120);
+
             Console.WriteLine("[5.3] 断网即时归因（遮罩/日志要说清检测到什么）");
             Check("网卡消失 → 说清了网卡被禁用或拔掉",
                 NetworkGuard.DescribeDown(false, false, null).Contains("消失"));

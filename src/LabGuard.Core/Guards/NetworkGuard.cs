@@ -212,10 +212,15 @@ namespace LabGuard.Core.Guards
                     return "已断开 " + (int)span.TotalMinutes + " 分 " + span.Seconds + " 秒 · 插回网线后 10 秒内自动恢复";
                 },
                 IsWatchedRestored,
-                () =>
+                channel =>
                 {
-                    Context.Report(Name, "老师用密码解除了断网遮罩，监控暂停。", ViolationAction.Notify, "教师解锁");
-                    _pausedByTeacher = true;
+                    if (string.IsNullOrEmpty(channel)) channel = "密码";
+                    bool pause = Context.Config.Network.PauseMonitoringOnTeacherUnlock;
+                    Context.Report(Name,
+                        pause ? ("老师用" + channel + "解除了断网遮罩，监控暂停。")
+                              : ("老师用" + channel + "解除了断网遮罩（按设置继续监控）。"),
+                        ViolationAction.Notify, "教师解锁");
+                    _pausedByTeacher = true;      // 本次断网不再重复弹遮罩
                 });
             Log.Warn("已弹出断网遮罩（机位 " + number + "）");
         }

@@ -56,7 +56,7 @@ namespace LabGuard.Settings
                         string.IsNullOrEmpty(config.PasswordHash) ? PasswordHasher.Create("a1b2c3") : config.PasswordHash,
                         maskWallpaper, true,
                         () => "已断开 0 分 42 秒 · 插回网线后 10 秒内自动恢复",
-                        () => false, () => { });
+                        () => false, channel => { });
                     Application.DoEvents();
                     System.Threading.Thread.Sleep(600);
                     Application.DoEvents();

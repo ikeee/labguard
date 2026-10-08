@@ -49,12 +49,14 @@ namespace LabGuard.Service
                 Log.Warn("尚未设置密码（未安装完成），服务暂不启用管控");
                 return;
             }
-            if (WatchdogGuard.IsPaused())
-            {
-                Log.Warn("检测到暂停标记（老师已暂停），服务暂不启用管控");
-                return;
-            }
-            StartEngine();
+            // 「暂停」只停**管控策略**，不停**进程守护**：
+            // 真机事故（2026-10-08）——老师手势解锁遮罩写入 paused.flag 后，服务既不起引擎也不拉代理，
+            // 学生杀掉小助手就再没人管，且托盘没了、老师点不到"启动监控"，只能手工跑设置程序。
+            bool paused = WatchdogGuard.IsPaused();
+            if (paused)
+                Log.Warn("检测到暂停标记（老师已暂停）：不启用管控策略，但进程守护继续（小助手被杀照样拉起）");
+            else
+                StartEngine();
             EnsureAgent();
             // 兜底轮询（原有逻辑保留）：万一"句柄等待"那条路走不通（权限/会话异常），还有它
             _agentWatch = new System.Timers.Timer(Math.Max(5, _config.Watchdog.AgentRestartSeconds) * 1000) { AutoReset = true };
@@ -195,8 +197,8 @@ namespace LabGuard.Service
             // 两个开关任一打开就守护小助手：
             // 「互相守护」是老开关，「进程防拆加固」是新开关 —— 机房常见配置是"只开网络组 + 防拆"，
             // 若这里只看 Watchdog.Enabled，学生一杀进程就没人管了（真机演练实测：20 秒都没回来）。
-            if (!(_config.Watchdog.Enabled || _config.AntiTamper.Enabled)) return;
-            if (WatchdogGuard.IsPaused()) return;
+            // 暂停与否交给纯函数判断（默认**暂停也守护**），别再一句 IsPaused() 就把防拆关掉。
+            if (!WatchdogGuard.ShouldKeepAgentAlive(_config, WatchdogGuard.IsPaused())) return;
             if (Core.Interop.SystemActions.ProcessExists("LabGuard.Agent")) return;
             string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LabGuard.Agent.exe");
             if (!File.Exists(path))
@@ -217,6 +219,122 @@ namespace LabGuard.Service
                 Log.Warn("已尝试重新启动小助手代理（schtasks rc=" + rc + "）");
             }
             catch (Exception ex) { Log.Warn("启动代理失败：" + ex.Message); }
+        }
+
+        // ------------------------------------------------------------------ 演练：暂停期间杀进程还能不能复活
+        /// <summary>
+        /// 「老师暂停了监控 → 学生杀掉小助手 → 还会不会被拉起来」的可断言演练。
+        /// 这是 2026-10-08 真机事故的直接回归入口（那次是杀掉后 8 小时没人管）。
+        /// 步骤：置暂停标记 → 确认小助手在 → 结束它 → 等它回来 → 还原暂停标记。
+        /// </summary>
+        public static int PauseDrill(int waitSeconds, out string report)
+        {
+            int budget = Math.Max(5, waitSeconds);
+            GuardConfig cfg = ConfigStore.Load();
+            if (!cfg.AntiTamper.Enabled)
+            {
+                report = "演练前提不满足：防拆总开关（AntiTamper.Enabled）是关的";
+                return 2;
+            }
+            if (!WatchdogGuard.ShouldKeepAgentAlive(cfg, true))
+            {
+                report = "当前配置下暂停期间不守护进程（AntiTamper.KeepAliveWhenPaused=false）：" +
+                         "按设计暂停时进程不会被拉起，演练不适用";
+                return 2;
+            }
+            bool wasPaused = WatchdogGuard.IsPaused();
+            WatchdogGuard.MarkPaused(true);
+            try
+            {
+                int first = WaitForAgent(budget);
+                if (first <= 0)
+                {
+                    report = "FAIL：置暂停后小助手没起来（守护没生效，或计划任务 LabGuard\\Agent 缺失）";
+                    return 1;
+                }
+                string detail;
+                Core.Interop.ProcessHardening.RestoreProcess(first, out detail);   // 先还原 DACL 才杀得掉
+                try
+                {
+                    Process victim = Process.GetProcessById(first);
+                    victim.Kill();
+                    // Kill() 只是"请求"结束：不 wait 的话进程还会短暂存在，
+                    // 下一步 WaitForAgent 会立刻又"看到"它 → 变成假 PASS（pid 都没变）。
+                    victim.WaitForExit(5000);
+                }
+                catch (Exception ex)
+                {
+                    report = "FAIL：结束小助手失败：" + ex.Message;
+                    return 1;
+                }
+                Log.Warn("[防拆演练] 已在暂停状态下结束小助手（pid=" + first + "），等待复活……");
+                Thread.Sleep(1000);                     // 给它一点退出的时间，避免拿到正在退出的旧 pid
+                int back = WaitForAgent(budget);
+                if (back <= 0)
+                {
+                    report = "FAIL：暂停期间被杀后 " + budget + " 秒内没有复活 —— 防拆仍被暂停挡住了";
+                    return 1;
+                }
+                if (back == first)
+                {
+                    report = "FAIL：小助手没被真正结束（pid 仍是 " + first + "），演练不算数";
+                    return 1;
+                }
+                report = "PASS：暂停期间小助手被杀后仍会复活（原 pid=" + first + " → 新 pid=" + back +
+                         "），防拆已与「监控暂停」解耦";
+                return 0;
+            }
+            finally
+            {
+                WatchdogGuard.MarkPaused(wasPaused);       // 还原现场，别把老师机器留在暂停态
+            }
+        }
+
+        /// <summary>
+        /// 恢复监控（一次性）：清掉暂停标记，并让**正在运行**的服务/小助手真正切回完整形态。
+        /// 只清标记是不够的——服务在 OnStart 时就因暂停跳过了引擎，小助手也是以"已暂停"形态起的，
+        /// 两者都不会因为标记消失而自己变回来（老师会以为恢复了、其实还是裸奔）。
+        /// </summary>
+        public static int ResumeAll(out string report)
+        {
+            WatchdogGuard.MarkPaused(false);
+            Log.Warn("[防拆] 已清除暂停标记（--resume），正在重启守护服务与小助手……");
+
+            int killed = 0;
+            try
+            {
+                foreach (Process p in Process.GetProcessesByName("LabGuard.Agent"))
+                {
+                    int id = p.Id;
+                    string detail;
+                    Core.Interop.ProcessHardening.RestoreProcess(id, out detail);   // 先还原 DACL 才杀得掉
+                    try { p.Kill(); killed++; } catch { }
+                    p.Dispose();
+                }
+            }
+            catch { }
+
+            Core.Interop.SystemActions.Run("net.exe", "stop " + WatchdogGuard.ServiceName);
+            Thread.Sleep(3000);
+            Core.Interop.SystemActions.Run("net.exe", "start " + WatchdogGuard.ServiceName);
+            Thread.Sleep(3000);
+
+            bool svcUp = Core.Interop.SystemActions.ProcessExists("LabGuard.Service");
+            int pid = WaitForAgent(20);
+            report = "已清除暂停标记；结束旧小助手 " + killed + " 个，服务" + (svcUp ? "已重启" : "重启失败（兜底任务会在 1 分钟内拉回）") +
+                     "，小助手" + (pid > 0 ? "已重新拉起（pid=" + pid + "）" : "尚未起来") + "。";
+            return (svcUp && pid > 0) ? 0 : 1;
+        }
+
+        private static int WaitForAgent(int seconds)
+        {
+            for (int i = 0; i < seconds * 4; i++)
+            {
+                int pid = FindAgentPid();
+                if (pid > 0) return pid;
+                Thread.Sleep(250);
+            }
+            return 0;
         }
 
         protected override void OnStop()
@@ -252,9 +370,13 @@ namespace LabGuard.Service
                 Log.Info("[防拆] 兜底自愈：处于安全模式，不做任何拉起（给老师留后路）");
                 return 0;
             }
-            if (WatchdogGuard.IsPaused())
+            bool paused = WatchdogGuard.IsPaused();
+            if (!WatchdogGuard.ShouldKeepAgentAlive(cfg, paused))
             {
-                Log.Info("[防拆] 兜底自愈：老师已暂停，不拉起");
+                // 限频 + 带恢复办法：以前每分钟一行干巴巴的 INFO，老师既看不见也不知道怎么恢复
+                if (paused && WatchdogGuard.PauseHintDue(10))
+                    Log.Warn("[防拆] 兜底自愈：老师已暂停，且未开启「暂停时也守护进程」，本次不拉起。" +
+                             "要恢复监控：运行 LabGuard.Settings.exe 保存一次，或执行 LabGuard.Service.exe --resume");
                 return 0;
             }
             if (Log.DryRun)

@@ -29,11 +29,12 @@ namespace LabGuard.Core.Guards
     {
         /// <summary>
         /// 断网遮罩（"屏保式"）：全屏显示、吞掉键鼠、**插回网线即自动消失**（不需要老师）。
-        /// teacherUnlock 为老师用密码强制解除时的回调（用于暂停监控，避免又被弹出来）。
+        /// teacherUnlock 为老师强制解除时的回调，参数是解除通道（"手势"/"密码"）——
+        /// 以前不传通道，日志一律写"老师用密码解除"，手势解锁时也这么写，老师看日志会被误导。
         /// </summary>
         void ShowDisconnectMask(string machineNumber, string headLine, string advice, string passwordHash,
             bool randomWallpaper, bool showElapsed, Func<string> elapsedText, Func<bool> networkRestored,
-            Action teacherUnlock);
+            Action<string> teacherUnlock);
 
         /// <summary>响鸣提醒（次数有限）。</summary>
         void Beep(int times, int intervalMs);

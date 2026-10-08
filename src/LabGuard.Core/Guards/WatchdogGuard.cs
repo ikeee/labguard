@@ -35,6 +35,47 @@ namespace LabGuard.Core.Guards
             catch { }
         }
 
+        /// <summary>
+        /// 纯函数（**就是为了自检能断言**）：这个配置 + 这个暂停状态下，服务该不该保证小助手进程活着。
+        /// 历史坑：以前这里直接 `if (IsPaused()) return;`，于是老师一次"解除遮罩"就把防拆一起关了
+        /// —— 学生杀掉小助手后永远没人拉起（真机事故 2026-10-08，日志刷了 8 小时"老师已暂停，不拉起"）。
+        /// 语义应该是：**暂停 = 停止管控策略；进程守护照旧**。
+        /// </summary>
+        public static bool ShouldKeepAgentAlive(Config.GuardConfig cfg, bool paused)
+        {
+            if (cfg == null) return false;
+            if (!(cfg.Watchdog.Enabled || cfg.AntiTamper.Enabled)) return false;
+            if (!paused) return true;
+            return cfg.AntiTamper.Enabled && cfg.AntiTamper.KeepAliveWhenPaused;
+        }
+
+        /// <summary>
+        /// 限频：暂停提示别每分钟刷一行（真机一天刷了 480 行同样的 INFO，老师根本不会看）。
+        /// 到点返回 true 并更新时间戳。
+        /// </summary>
+        public static bool PauseHintDue(int intervalMinutes) => PauseHintDue(intervalMinutes, DateTime.Now, HintStampPath);
+
+        /// <summary>
+        /// 可指定"当前时间"与"时间戳文件"的重载：**只为自检能确定性地断言**——
+        /// 既不用等真实时间过去，也不会把真机的时间戳文件写成测试值（自检就在真机上跑，这点很关键）。
+        /// </summary>
+        public static bool PauseHintDue(int intervalMinutes, DateTime now, string stampPath)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(stampPath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                DateTime last = DateTime.MinValue;
+                if (File.Exists(stampPath)) DateTime.TryParse(File.ReadAllText(stampPath), out last);
+                if ((now - last).TotalMinutes < Math.Max(1, intervalMinutes)) return false;
+                File.WriteAllText(stampPath, now.ToString("o"), new UTF8Encoding(false));
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private static string HintStampPath => Path.Combine(Config.ConfigStore.DataDir, "pausehint.stamp");
+
         public static bool IsPaused()
         {
             try

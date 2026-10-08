@@ -149,6 +149,12 @@ namespace LabGuard.Core.Settings
             list.Add(Bool("2、网络与防火墙", "Network.UnlockGestureFeedback", "遮罩上显示手势进度点",
                 "注意：学生也看得见这些点，等于公开演示解锁过程；默认关",
                 c => c.Network.UnlockGestureFeedback, (c, v) => c.Network.UnlockGestureFeedback = (bool)v));
+            list.Add(Bool("2、网络与防火墙", "Network.PauseMonitoringOnTeacherUnlock", "老师解除遮罩后暂停全部监控",
+                "开（默认）：解除遮罩 = 暂停监控，否则 10 秒后遮罩又弹出来。\n" +
+                "关：只解除这一次遮罩，USB / 软件拦截 / 浏览器策略等继续生效（适合网线修好就自动恢复的场景）。\n" +
+                "注：无论本项如何，**进程守护都不受影响**（见「14、进程防拆加固」里的「暂停期间也继续守护进程」）。",
+                c => c.Network.PauseMonitoringOnTeacherUnlock,
+                (c, v) => c.Network.PauseMonitoringOnTeacherUnlock = (bool)v));
             list.Add(Bool("2、网络与防火墙", "Network.DisconnectMaskShowElapsed", "遮罩上显示已断开时长",
                 null, c => c.Network.DisconnectMaskShowElapsed,
                 (c, v) => c.Network.DisconnectMaskShowElapsed = (bool)v));
@@ -398,6 +404,12 @@ namespace LabGuard.Core.Settings
                 c => c.AntiTamper.RepeatKillWindowMinutes, (c, v) => c.AntiTamper.RepeatKillWindowMinutes = (int)v));
             list.Add(Number("14、进程防拆加固", "AntiTamper.RepeatKillCount", "⑤ 被杀多少次算异常",
                 null, 2, 100, c => c.AntiTamper.RepeatKillCount, (c, v) => c.AntiTamper.RepeatKillCount = (int)v));
+            list.Add(Bool("14、进程防拆加固", "AntiTamper.KeepAliveWhenPaused", "⑥ 老师暂停期间也继续守护进程（强烈建议开）",
+                "**真机事故教训**：老师解除断网遮罩会写入「已暂停」标记；以前这个标记会连进程守护一起关掉，\n" +
+                "结果是学生杀掉小助手后再也没人拉起（而且托盘没了，老师点不到「启动监控」，只能手工跑设置程序）。\n" +
+                "开着：暂停只停**管控策略**，小助手进程照旧被看住（以「已暂停」形态运行，老师随时能一键恢复）。\n" +
+                "只有当你确实想在暂停时彻底停掉一切（例如装机维护）才关。",
+                c => c.AntiTamper.KeepAliveWhenPaused, (c, v) => c.AntiTamper.KeepAliveWhenPaused = (bool)v));
 
             return list;
         }
