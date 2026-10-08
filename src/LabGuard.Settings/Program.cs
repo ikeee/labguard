@@ -253,6 +253,18 @@ namespace LabGuard.Settings
                 return;
             }
 
+            // 红队 B4c：已安装但密码散列为空 = 配置被清过。设置程序绝不能"无密码敞开"——
+            // 那正是篡改者的目的。fail-closed：拒绝打开（不泄露任何救援命令，老师自己会查 docs/05）。
+            if (LabGuard.Core.Config.ConfigIntegrity.IsSuspiciousEmptyPassword(
+                    LabGuard.Core.Config.ConfigStore.IsInstalled(), config.PasswordHash))
+            {
+                Log.Error("密码散列为空但本机标记为已安装——配置疑似被篡改，拒绝打开设置");
+                LabGuard.Core.Config.ConfigStore.MarkTamperSuspected();
+                MessageBox.Show("配置已损坏，无法打开设置。\n请联系机房管理员处理。",
+                    "LabGuard", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
             // 已设置密码则必须先通过密码才能改设置
             if (!string.IsNullOrEmpty(config.PasswordHash))
             {

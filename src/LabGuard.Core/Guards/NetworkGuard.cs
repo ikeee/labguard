@@ -43,6 +43,15 @@ namespace LabGuard.Core.Guards
         private readonly HashSet<string> _watchedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private DateTime _startedAt;
         private DateTime _unpluggedSince = DateTime.MinValue;
+        private long _unpluggedStamp;       // 红队 D1：断网计时用单调时钟（Stopwatch 时间戳），回拨墙钟骗不过
+        private DateTime _lastWall = DateTime.MinValue;   // 时间跳变感知（红队 D1）
+        private double _lastStamp;
+
+        /// <summary>单调时钟秒数（net48 没有 TickCount64，用 Stopwatch 时间戳换算）。</summary>
+        private static double MonoSeconds()
+        {
+            return System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
+        }
         private bool _maskShown;
         private bool _soundDone;
         private bool _pausedByTeacher;
@@ -91,6 +100,24 @@ namespace LabGuard.Core.Guards
                 return;
             }
 
+            // 红队 D1：时间跳变感知——墙钟与单调时钟的步进差超过 60 秒，说明有人动了系统时间
+            // （学生拔网线+回拨时钟曾能让"20 秒确认"永远走不到）。
+            {
+                DateTime wall = DateTime.Now;
+                double mono = MonoSeconds();
+                if (_lastWall != DateTime.MinValue)
+                {
+                    double wallStep = (wall - _lastWall).TotalSeconds;
+                    double monoStep = mono - _lastStamp;
+                    if (Math.Abs(wallStep - monoStep) > 60)
+                        Context.Report(Name, "检测到系统时间被改动（墙钟与运行时钟偏差 "
+                            + (int)(wallStep - monoStep) + " 秒）——可能是在对抗断网确认计时。",
+                            ViolationAction.Notify, "时间跳变");
+                }
+                _lastWall = wall;
+                _lastStamp = mono;
+            }
+
             var current = new Dictionary<string, Baseline>(StringComparer.OrdinalIgnoreCase);
             foreach (NetworkInterface nic in NicRoles.Usable())
             {
@@ -124,8 +151,10 @@ namespace LabGuard.Core.Guards
 
             if (violationNow && Context.Config.Network.DetectDisconnected)
             {
-                if (_unpluggedSince == DateTime.MinValue) _unpluggedSince = DateTime.Now;
-                double elapsed = (DateTime.Now - _unpluggedSince).TotalSeconds;
+                // 红队 D1：确认计时用单调时钟（Stopwatch）——墙钟回拨骗不了它；
+                // _unpluggedSince（墙钟）只留作遮罩上的"已断开时长"展示。
+                if (_unpluggedStamp == 0) { _unpluggedStamp = System.Diagnostics.Stopwatch.GetTimestamp(); _unpluggedSince = DateTime.Now; }
+                double elapsed = MonoSeconds() - (_unpluggedStamp / (double)System.Diagnostics.Stopwatch.Frequency);
 
                 if (elapsed >= DisconnectConfirmSeconds)
                 {
@@ -138,7 +167,7 @@ namespace LabGuard.Core.Guards
                 return;   // 断网期间不做 IP 比对（读到的是无效值）
             }
 
-            if (_unpluggedSince != DateTime.MinValue)
+            if (_unpluggedStamp != 0)
             {
                 if (anyDown)
                 {
@@ -148,13 +177,16 @@ namespace LabGuard.Core.Guards
                 {
                     Log.Info("网络已恢复，遮罩与响鸣标记复位");
                     _unpluggedSince = DateTime.MinValue;
+                    _unpluggedStamp = 0;
                     _maskShown = false;
                     _soundDone = false;
                     SetStatus("正常");
                 }
             }
 
-            // 改 IP 检测（只对被判据网卡）
+            // 改 IP / 改网关检测（只对被判据网卡）
+            // 红队 D3：以前只比 IP——学生保留原 IP、只把网关改错/删掉默认路由，
+            // 就是"检测认为有网、实际全网不通"的零告警破坏。
             bool violation = false;
             foreach (Baseline baseLine in _baseline)
             {
@@ -165,6 +197,14 @@ namespace LabGuard.Core.Guards
                 {
                     violation = true;
                     Context.Report(Name, "本机 IP 被修改，原地址为：" + baseLine.Ip + "，现已强制恢复。",
+                        HostAction(), baseLine.Name);
+                    if (Context.Config.Network.RestoreOriginalIp) Restore(baseLine);
+                }
+                if (!string.IsNullOrEmpty(baseLine.Gateway) && now.Gateway != baseLine.Gateway)
+                {
+                    violation = true;
+                    Context.Report(Name, "默认网关被修改（" + (baseLine.Gateway ?? "（无）") + " → "
+                            + (now.Gateway ?? "（已删除）") + "），网络实际已不通。",
                         HostAction(), baseLine.Name);
                     if (Context.Config.Network.RestoreOriginalIp) Restore(baseLine);
                 }

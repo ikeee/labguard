@@ -181,15 +181,22 @@ namespace LabGuard.Core.Interop
 
         /// <summary>
         /// 取最可信的一个（找不到返回 null，调用方应提示老师手动填写）。
-        /// 排序：正在运行的优先 → 学生端本体优先（StudentMain / Student / REDAgent / ClassMangerApp）
-        /// → 云桌面客户端 → 其它组件。
+        /// 排序：**学生端本体优先（Rank）→ 正在运行的优先** → 云桌面客户端 → 其它组件。
+        /// 红队 A5 教训：原先"正在运行的优先"会在学生端被杀后把识别漂移到还在跑的
+        /// VoiClient 上（云桌面客户端不是"课堂管控"本体）——学生端本体只要在磁盘上找得到，
+        /// 哪怕此刻没运行，也必须保住"关键客户端"的位置（守护的职责恰恰是把它拉回来）。
         /// </summary>
         public static ClassroomCandidate DetectBest(out string reason)
         {
-            List<ClassroomCandidate> all = DetectAll();
-            ClassroomCandidate best = all
-                .OrderBy(c => c.Source == "正在运行" ? 0 : 1)
-                .ThenBy(Rank)
+            return PickBest(DetectAll(), out reason);
+        }
+
+        /// <summary>从候选清单里挑出最可信的一个（纯排序，抽出便于自检用合成候选断言）。</summary>
+        public static ClassroomCandidate PickBest(IEnumerable<ClassroomCandidate> all, out string reason)
+        {
+            ClassroomCandidate best = (all ?? Enumerable.Empty<ClassroomCandidate>())
+                .OrderBy(Rank)
+                .ThenBy(c => c.Source == "正在运行" ? 0 : 1)
                 .FirstOrDefault();
             reason = best == null
                 ? "未识别到课堂软件，请在设置里手动填写学生端程序路径"
@@ -198,7 +205,7 @@ namespace LabGuard.Core.Interop
         }
 
         /// <summary>候选可信度：0 = 学生端本体，1 = 其它组件，2 = 云桌面客户端（不是"课堂管控"本体）。</summary>
-        private static int Rank(ClassroomCandidate c)
+        public static int Rank(ClassroomCandidate c)
         {
             string n = (c.ProcessName ?? "").ToLowerInvariant();
             if (n == "studentmain.exe" || n == "student.exe" || n == "redagent.exe" ||

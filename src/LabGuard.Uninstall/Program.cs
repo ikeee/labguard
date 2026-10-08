@@ -87,8 +87,12 @@ namespace LabGuard.Uninstall
             }
 
             GuardConfig config = ConfigStore.Load();
-            // 免密只有一条路：显式 --force（老师忘记密码时的救援入口，不会写在任何脚本/文档下发给学生）
-            if (!force && !string.IsNullOrEmpty(config.PasswordHash))
+            // 红队 B9 修复：--force **不再免密**——"免密自杀开关"不能编译在学生机的 exe 里，
+            // 否则管理员学生一条 `Uninstall.exe --force --quiet` 就能静默全拆。
+            // --force 现在仅是兼容性保留参数（旧脚本不用改），不再跳过密码；
+            // 忘记密码的救援通道 = 老师用自己的介质运行 cleanup-all.ps1（docs/05），不进学生机。
+            if (force) Console.Error.WriteLine("提示：--force 已不再免密，请改用 --password <密码>（或老师介质上的 cleanup-all.ps1）。");
+            if (!string.IsNullOrEmpty(config.PasswordHash))
             {
                 bool ok = false;
                 int failed = 0;   // >0 = 真的输错了；0 = 老师只是关掉了密码框（不是密码错误）
@@ -99,7 +103,7 @@ namespace LabGuard.Uninstall
                 }
                 else if (quiet)
                 {
-                    Console.Error.WriteLine("静默卸载必须提供 --password <密码>，或由老师显式加 --force。");
+                    Console.Error.WriteLine("静默卸载必须提供 --password <密码>。");
                     Environment.ExitCode = 3;
                     return;
                 }

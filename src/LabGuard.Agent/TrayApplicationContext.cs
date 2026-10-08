@@ -62,8 +62,20 @@ namespace LabGuard.Agent
 
             if (string.IsNullOrEmpty(_config.PasswordHash))
             {
-                Balloon("LabGuard", "尚未设置密码，监控未启用。请右键托盘图标 → 系统功能 → 设置。");
-                Log.Warn("未设置密码，处于「未配置」状态，不启用任何管控");
+                // 红队 B4c：已安装却没了密码散列 = 配置被清过，按受损处理（管控继续），不放行
+                if (LabGuard.Core.Config.ConfigIntegrity.IsSuspiciousEmptyPassword(
+                        LabGuard.Core.Config.ConfigStore.IsInstalled(), _config.PasswordHash))
+                {
+                    Log.Error("密码散列为空但本机标记为已安装——配置疑似被篡改，管控继续启用（修复见 docs/05）");
+                    LabGuard.Core.Config.ConfigStore.MarkTamperSuspected();
+                    if (_config.Enabled && !WatchdogGuard.IsPaused()) StartEngine();
+                    else { _paused = true; UpdateTrayText(); }
+                }
+                else
+                {
+                    Balloon("LabGuard", "尚未设置密码，监控未启用。请右键托盘图标 → 系统功能 → 设置。");
+                    Log.Warn("未设置密码，处于「未配置」状态，不启用任何管控");
+                }
             }
             else if (Core.Interop.SafeModeDetector.ShouldSkipEnforcement(_config.SafeMode.RunInSafeMode))
             {

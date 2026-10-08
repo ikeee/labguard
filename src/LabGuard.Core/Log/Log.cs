@@ -10,6 +10,10 @@ namespace LabGuard.Core.Logging
     public static class Log
     {
         private static readonly object Gate = new object();
+        private static string _currentPath;
+        private static long _expectedLength = -1;
+        /// <summary>本进程观测到的"日志曾被清空/删除"次数（心跳可带上）。</summary>
+        public static int TamperEvents { get; private set; }
         public static string Directory { get; set; } = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "LabGuard", "logs");
         public static LogLevel MinLevel { get; set; } = LogLevel.Info;
@@ -38,8 +42,26 @@ namespace LabGuard.Core.Logging
                 try
                 {
                     System.IO.Directory.CreateDirectory(Directory);
-                    File.AppendAllText(Path.Combine(Directory, "guard-" + DateTime.Now.ToString("yyyyMMdd") + ".log"),
-                        line + Environment.NewLine, new UTF8Encoding(false));
+                    string path = Path.Combine(Directory, "guard-" + DateTime.Now.ToString("yyyyMMdd") + ".log");
+                    // 红队 D5：日志能被无声清空/删除 = 毁尸灭迹零成本。
+                    // 常驻句柄方案在多进程（服务+小助手）同时写日志时行不通（共享模式互相挡），
+                    // 改为"自愈式留痕"：发现文件短于上次写入后的长度（或干脆没了），
+                    // 先补一行毁迹标记再写正行——攻击者可以删历史，但删不掉"他删过"这个事实。
+                    if (path == _currentPath && _expectedLength >= 0)
+                    {
+                        long actual = File.Exists(path) ? new FileInfo(path).Length : -1;
+                        if (actual < _expectedLength)
+                        {
+                            TamperEvents++;
+                            string marker = string.Format("{0:yyyy-MM-dd HH:mm:ss.fff} [WARN ] [{1}] 日志文件曾被清空或删除（此前约 {2} 字节的记录丢失）——可能有人在毁尸灭迹",
+                                DateTime.Now, Environment.UserName, _expectedLength);
+                            File.AppendAllText(path, marker + Environment.NewLine, new UTF8Encoding(false));
+                            if (EchoToConsole) Console.WriteLine(marker);
+                        }
+                    }
+                    File.AppendAllText(path, line + Environment.NewLine, new UTF8Encoding(false));
+                    _currentPath = path;
+                    try { _expectedLength = new FileInfo(path).Length; } catch { _expectedLength = -1; }
                 }
                 catch
                 {

@@ -64,5 +64,17 @@ namespace LabGuard.Core.UI
             string lower = text.ToLowerInvariant();
             return keys.Any(lower.Contains);
         }
+
+        /// <summary>
+        /// 口令连续输错后的退避秒数（红队 C4：无限重试必须有代价）。
+        /// 前 2 次免费（老师手滑很正常）；第 3 次起 2^(n-2)，封顶 300 秒。
+        /// 纯函数，自检 [5.10] 直接断言序列 0,0,2,4,8,16,32,64,128,256,300,300…
+        /// </summary>
+        public static int BackoffSeconds(int failedAttempts)
+        {
+            if (failedAttempts <= 2) return 0;
+            long seconds = 1L << Math.Min(failedAttempts - 2, 20);
+            return (int)Math.Min(seconds, 300);
+        }
     }
 }

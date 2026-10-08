@@ -46,8 +46,18 @@ namespace LabGuard.Service
             }
             if (string.IsNullOrEmpty(_config.PasswordHash))
             {
-                Log.Warn("尚未设置密码（未安装完成），服务暂不启用管控");
-                return;
+                // 红队 B4c：已安装却没了密码散列 = 配置被清过。按受损处理：管控**继续**（绝不"未配置放行"），
+                // 老师修复通道 = 自己介质上的 cleanup-all.ps1 或重装（docs/05）。
+                if (Core.Config.ConfigIntegrity.IsSuspiciousEmptyPassword(Core.Config.ConfigStore.IsInstalled(), _config.PasswordHash))
+                {
+                    Log.Error("密码散列为空但本机标记为已安装——配置疑似被篡改，管控继续启用（修复见 docs/05）");
+                    Core.Config.ConfigStore.MarkTamperSuspected();
+                }
+                else
+                {
+                    Log.Warn("尚未设置密码（未安装完成），服务暂不启用管控");
+                    return;
+                }
             }
             // 「暂停」只停**管控策略**，不停**进程守护**：
             // 真机事故（2026-10-08）——老师手势解锁遮罩写入 paused.flag 后，服务既不起引擎也不拉代理，
@@ -203,8 +213,14 @@ namespace LabGuard.Service
             string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LabGuard.Agent.exe");
             if (!File.Exists(path))
             {
-                Log.Warn("未找到代理程序：" + path);
-                return;
+                // 红队 A6：exe 缺失（运行中被改名/删）时以前只 WARN 不自愈——立即从 payload 补回
+                Log.Warn("未找到代理程序：" + path + "，尝试从 payload 恢复……");
+                int restored = WatchdogGuard.RestoreFromPayload(AppDomain.CurrentDomain.BaseDirectory, null, null);
+                if (restored <= 0 || !File.Exists(path))
+                {
+                    Log.Error("代理程序缺失且 payload 副本不可用，小助手无法拉起——请重新部署！");
+                    return;
+                }
             }
             try
             {
@@ -401,6 +417,57 @@ namespace LabGuard.Service
                     "failure " + WatchdogGuard.ServiceName + " actions= restart/5000/restart/10000/restart/30000 reset= 300");
                 registered = Core.Interop.SystemActions.ServiceExists(WatchdogGuard.ServiceName);
                 if (registered) handled++;
+            }
+
+            // 红队 A6/B2：关键 exe 在运行中被改名/删除时，以前只打一行 WARN 就完事——
+            // 这里立即从 payload 副本恢复，把"发现缺失"和"文件自愈"连成一条路。
+            if (!File.Exists(svcPath) || !File.Exists(Path.Combine(dir, "LabGuard.Agent.exe")))
+            {
+                int restored = WatchdogGuard.RestoreFromPayload(dir, null, null);
+                if (restored > 0) { Log.Warn("[防拆] 已从 payload 恢复 " + restored + " 个缺失文件"); handled++; }
+                else Log.Error("[防拆] 关键程序文件缺失且 payload 副本不可用，无法自愈——请重新部署！");
+            }
+
+            if (registered)
+            {
+                // 红队 B6a：服务没删、只把启动类型改成 Disabled——以前无人纠正，重启后永久免管控
+                string startMode = Core.Interop.SystemActions.QueryWmi(
+                    "SELECT StartMode FROM Win32_Service WHERE Name='" + WatchdogGuard.ServiceName + "'", "StartMode");
+                if (startMode != null && !startMode.Equals("Auto", StringComparison.OrdinalIgnoreCase))
+                {
+                    Log.Warn("[防拆] 守护服务启动类型被改为 " + startMode + "，已改回自动");
+                    Core.Interop.SystemActions.Run("sc.exe", "config " + WatchdogGuard.ServiceName + " start= auto");
+                    handled++;
+                }
+                // 红队 B6b/A8：FailureActions 被清零/改慢没有任何巡检——每轮幂等重写，成本可忽略
+                Core.Interop.SystemActions.Run("sc.exe",
+                    "failure " + WatchdogGuard.ServiceName + " actions= restart/5000/restart/10000/restart/30000 reset= 300");
+            }
+
+            // 红队 D7/B7：两个计划任务是全部复活线的根基。
+            // 被删 → 按安装时的参数重建；被禁用 → /change /enable（对已启用任务是幂等 no-op）。
+            string agentExe = Path.Combine(dir, "LabGuard.Agent.exe");
+            if (Core.Interop.SystemActions.Run("schtasks.exe", "/query /tn \"LabGuard\\Agent\"") != 0)
+            {
+                Log.Warn("[防拆] 计划任务 LabGuard\\Agent 被删除，正在重建……");
+                Core.Interop.SystemActions.Run("schtasks.exe",
+                    "/create /tn \"LabGuard\\Agent\" /tr \"\\\"" + agentExe + "\\\"\" /sc onlogon /rl highest /f");
+                handled++;
+            }
+            else
+            {
+                Core.Interop.SystemActions.Run("schtasks.exe", "/change /tn \"LabGuard\\Agent\" /enable");
+            }
+            if (Core.Interop.SystemActions.Run("schtasks.exe", "/query /tn \"LabGuard\\Guard\"") != 0)
+            {
+                Log.Warn("[防拆] 计划任务 LabGuard\\Guard 被删除，正在重建……");
+                Core.Interop.SystemActions.Run("schtasks.exe",
+                    "/create /tn \"LabGuard\\Guard\" /tr \"'" + svcPath + "' --ensure\" /sc minute /mo 1 /ru SYSTEM /rl highest /f");
+                handled++;
+            }
+            else
+            {
+                Core.Interop.SystemActions.Run("schtasks.exe", "/change /tn \"LabGuard\\Guard\" /enable");
             }
 
             if (registered && Core.Interop.SystemActions.ServiceState(WatchdogGuard.ServiceName) != "Running")

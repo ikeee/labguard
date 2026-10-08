@@ -169,5 +169,18 @@ namespace LabGuard.Core.Interop
             Armed = false;
             Position = 0;
         }
+
+        /// <summary>
+        /// 红队 C4：同一次遮罩/锁屏生命周期内允许的手势错误上限。
+        /// 默认序列 4^8=65536 的组合空间本就不大，无限试错等于没锁；
+        /// 超过后由消费方关闭手势通道（只记日志，界面不吭声——不泄露通道存在）。
+        /// </summary>
+        public const int MaxMistakesPerSession = 20;
+
+        /// <summary>纯判定（自检用）：错误次数是否已触发防穷举关闭。</summary>
+        public static bool BruteForceTripped(int mistakes)
+        {
+            return mistakes >= MaxMistakesPerSession;
+        }
     }
 }

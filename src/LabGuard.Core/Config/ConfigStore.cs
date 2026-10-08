@@ -42,11 +42,60 @@ namespace LabGuard.Core.Config
                     if (IsInstalled()) TamperSuspected = true;
                     return new GuardConfig();
                 }
-                byte[] blob = File.ReadAllBytes(ConfigPath);
-                string json = Decrypt(blob);
+                byte[] key = ConfigIntegrity.TryGetKey();
+                string json;
+                DateTime fileSavedAt;
+                string rawContent;
+                try { rawContent = Decrypt(File.ReadAllBytes(ConfigPath)); }
+                catch { rawContent = null; }
+                bool fileIsLegacy = rawContent != null && !ConfigIntegrity.IsEnvelope(rawContent);
+                if (rawContent == null || !ConfigIntegrity.TryUnwrap(key, rawContent, out json, out fileSavedAt))
+                {
+                    // 红队 B4：签名不对 = 文件被篡改（DPAPI 对本机管理员无机密性，防不住就检出）
+                    Log.Error("配置文件签名验证失败（疑似被篡改），尝试从注册表镜像恢复");
+                    TamperSuspected = true;
+                    GuardConfig mirrorCfg = LoadFromRegistryMirror();
+                    if (mirrorCfg != null)
+                    {
+                        try { Save(mirrorCfg); } catch { }
+                        TamperSuspected = true;   // Save 会清标记，再置回
+                        return mirrorCfg;
+                    }
+                    if (IsInstalled()) return new GuardConfig();   // 镜像也没了：受损默认（fail-closed 由消费方判）
+                    return new GuardConfig();
+                }
                 var cfg = new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024 }
                     .Deserialize<GuardConfig>(json) ?? new GuardConfig();
                 Normalize(cfg);
+
+                // 交叉校验镜像：正常流程两边同时写、时间戳必然一致；不一致 = 有一边被单独改写/回滚
+                DateTime mirrorSavedAt;
+                GuardConfig mirrorCfg2 = LoadFromRegistryMirror(out mirrorSavedAt);
+                if (fileIsLegacy)
+                {
+                    // 升级竞速（2026-10-08 部署复盘）：老配置遇上新二进制。
+                    // 镜像是签名新版 → 文件被人退成无签名（单点篡改/回滚）→ 镜像赢；
+                    // 镜像也是 legacy（或没有）→ 真·一次性升级：接受并立刻 Save 改签，
+                    // 绝不能直接判篡改（否则第一次 MarkPaused 建密钥后全机配置被误判清空）。
+                    if (mirrorCfg2 != null && mirrorSavedAt != DateTime.MinValue)
+                    {
+                        Log.Warn("配置文件无签名但注册表镜像是签名新版（疑似单点篡改/回滚），已按镜像恢复");
+                        TamperSuspected = true;
+                        try { Save(mirrorCfg2); } catch { }
+                        TamperSuspected = true;
+                        return mirrorCfg2;
+                    }
+                    try { Save(cfg); } catch { }   // 一次性升级：立刻改签
+                    return cfg;
+                }
+                if (mirrorCfg2 != null && mirrorSavedAt != fileSavedAt)
+                {
+                    Log.Warn("配置文件与注册表镜像不一致（疑似单点篡改/回滚），取较新的一份");
+                    TamperSuspected = true;
+                    if (mirrorSavedAt > fileSavedAt) { try { Save(mirrorCfg2); } catch { } TamperSuspected = true; return mirrorCfg2; }
+                    try { Save(cfg); } catch { }
+                    TamperSuspected = true;
+                }
                 return cfg;
             }
             catch (Exception ex)
@@ -61,6 +110,17 @@ namespace LabGuard.Core.Config
                 if (IsInstalled()) TamperSuspected = true;
                 return new GuardConfig();
             }
+        }
+
+        /// <summary>解 DPAPI + 验签名信封。legacy（升级前老配置）仅在还没有密钥时接受一次。</summary>
+        private static bool TryDecodeBlob(byte[] blob, byte[] key, out string json, out DateTime savedAtUtc)
+        {
+            json = null;
+            savedAtUtc = DateTime.MinValue;
+            string content;
+            try { content = Decrypt(blob); }
+            catch { return false; }
+            return ConfigIntegrity.TryUnwrap(key, content, out json, out savedAtUtc);
         }
 
         /// <summary>本次读取是否发生"从备份恢复"（说明可能有人动了配置文件）。</summary>
@@ -80,17 +140,36 @@ namespace LabGuard.Core.Config
             TamperSuspected = false;
         }
 
-        /// <summary>从 HKLM\SOFTWARE\LabGuard 的 CfgData（DPAPI 加密 JSON）恢复配置。</summary>
+        /// <summary>消费方发现"配置语义级异常"（如已安装但密码散列为空，B4c）时主动打标记。</summary>
+        public static void MarkTamperSuspected()
+        {
+            TamperSuspected = true;
+        }
+
+        /// <summary>从 HKLM\SOFTWARE\LabGuard 的 CfgData（DPAPI 加密 + 签名 JSON）恢复配置。</summary>
         private static GuardConfig LoadFromRegistryMirror()
         {
+            DateTime savedAt;
+            return LoadFromRegistryMirror(out savedAt);
+        }
+
+        private static GuardConfig LoadFromRegistryMirror(out DateTime savedAtUtc)
+        {
+            savedAtUtc = DateTime.MinValue;
             try
             {
                 using (RegistryKey k = Registry.LocalMachine.OpenSubKey(RegistryRoot))
                 {
                     byte[] blob = k?.GetValue("CfgData") as byte[];
                     if (blob == null || blob.Length == 0) return null;
+                    string json;
+                    if (!TryDecodeBlob(blob, ConfigIntegrity.TryGetKey(), out json, out savedAtUtc))
+                    {
+                        Log.Warn("注册表镜像签名验证失败（疑似被篡改）");
+                        return null;
+                    }
                     var cfg = new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024 }
-                        .Deserialize<GuardConfig>(Decrypt(blob));
+                        .Deserialize<GuardConfig>(json);
                     if (cfg == null) return null;
                     Normalize(cfg);
                     return cfg;
@@ -109,13 +188,16 @@ namespace LabGuard.Core.Config
             {
                 Directory.CreateDirectory(DataDir);
                 string json = new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024 }.Serialize(cfg);
-                File.WriteAllBytes(ConfigPath, Encrypt(json));
+                // 签名信封（红队 B4）：密钥不可用时降级为无签名明文 JSON（维持旧行为）
+                byte[] key = ConfigIntegrity.GetOrCreateKey();
+                string content = key != null ? ConfigIntegrity.Wrap(key, json, DateTime.UtcNow) : json;
+                File.WriteAllBytes(ConfigPath, Encrypt(content));
                 HardenDirectory(DataDir);
                 WriteRegistryMirror(cfg);
                 // 注册表加密镜像：配置文件被删/被破坏时自动恢复（HKLM\SOFTWARE\LabGuard 已被加固，普通用户改不了）
                 using (RegistryKey k = Registry.LocalMachine.CreateSubKey(RegistryRoot))
                 {
-                    k?.SetValue("CfgData", Encrypt(json), RegistryValueKind.Binary);
+                    k?.SetValue("CfgData", Encrypt(content), RegistryValueKind.Binary);
                 }
                 ClearTamperFlags();
             }

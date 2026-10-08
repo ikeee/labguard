@@ -29,7 +29,15 @@ namespace LabGuard.Core.Guards
             try
             {
                 Directory.CreateDirectory(Config.ConfigStore.DataDir);
-                if (paused) File.WriteAllText(PauseFlag, DateTime.Now.ToString("o"), new UTF8Encoding(false));
+                if (paused)
+                {
+                    // 红队 B3：旗标必须带签名——学生随手 echo 一个文件不能再换来"永久免管控"
+                    byte[] key = Config.ConfigIntegrity.GetOrCreateKey();
+                    string content = key != null
+                        ? Config.ConfigIntegrity.WrapPause(key, DateTime.Now)
+                        : DateTime.Now.ToString("o");   // 密钥不可用的降级态：维持旧格式
+                    File.WriteAllText(PauseFlag, content, new UTF8Encoding(false));
+                }
                 else if (File.Exists(PauseFlag)) File.Delete(PauseFlag);
             }
             catch { }
@@ -81,10 +89,18 @@ namespace LabGuard.Core.Guards
             try
             {
                 if (!File.Exists(PauseFlag)) return false;
+                string content = File.ReadAllText(PauseFlag);
+                // 红队 B3：先验签名再谈暂停。学生伪造的"免死金牌"（无签名/签名不对）
+                // 一律不认：忽略 + 删除 + 留痕——绝不"看起来活着实则裸奔"。
+                DateTime at;
+                if (!Config.ConfigIntegrity.TryUnwrapPause(Config.ConfigIntegrity.TryGetKey(), content, out at))
+                {
+                    Log.Warn("暂停标记无法验证（疑似伪造），已忽略并删除");
+                    try { File.Delete(PauseFlag); } catch { }
+                    return false;
+                }
                 Config.GuardConfig cfg = Config.ConfigStore.Load();
                 if (cfg.ResumeAfterMinutes <= 0) return true;
-                DateTime at;
-                if (!DateTime.TryParse(File.ReadAllText(PauseFlag), out at)) return true;
                 if ((DateTime.Now - at).TotalMinutes >= cfg.ResumeAfterMinutes)
                 {
                     File.Delete(PauseFlag);

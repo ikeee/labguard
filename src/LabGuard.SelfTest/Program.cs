@@ -35,6 +35,7 @@ namespace LabGuard.SelfTest
             }
 
             Console.WriteLine("=== LabGuard自检 ===");
+            TestRedTeamRegression();
             TestPassword();
             TestHosts();
             TestBlocklists();
@@ -493,6 +494,95 @@ namespace LabGuard.SelfTest
                 Check("键路径写法合法：" + k,
                     k.StartsWith("HKEY_LOCAL_MACHINE\\") || k.StartsWith("HKEY_CURRENT_USER\\"));
             }
+        }
+
+        /// <summary>[5.10] 红队对抗测试（2026-10-08）修复的回归断言——每条对应一个实测漏洞。</summary>
+        private static void TestRedTeamRegression()
+        {
+            Console.WriteLine("[5.10] 红队修复回归（配置签名 / 暂停旗标 / 退避 / 拉起锚定 / 识别不漂移）");
+
+            // ---- B4：配置信封签名 ----
+            byte[] key = new byte[32];
+            for (int i = 0; i < key.Length; i++) key[i] = (byte)(i + 1);
+            string json = "{\"PasswordHash\":\"abc\",\"Enabled\":true}";
+            string wrapped = ConfigIntegrity.Wrap(key, json, new DateTime(2026, 10, 8, 12, 0, 0, DateTimeKind.Utc));
+            string outJson; DateTime outAt;
+            Check("配置信封：签发后能原样解出",
+                ConfigIntegrity.TryUnwrap(key, wrapped, out outJson, out outAt) && outJson == json);
+            string tampered = wrapped.Replace("\"Enabled\":true", "\"Enabled\":false");
+            Check("配置信封：改一个字节就验签失败（B4a 篡改必然落网）",
+                !ConfigIntegrity.TryUnwrap(key, tampered, out outJson, out outAt));
+            Check("配置信封：错误密钥验签失败",
+                !ConfigIntegrity.TryUnwrap(new byte[32], wrapped, out outJson, out outAt));
+            Check("配置信封：legacy 内容可解出（升级/篡改的判定策略在 ConfigStore 层）",
+                ConfigIntegrity.TryUnwrap(null, json, out outJson, out outAt) && outJson == json
+                && ConfigIntegrity.TryUnwrap(key, json, out outJson, out outAt) && outJson == json);
+            Check("配置信封：IsEnvelope 能区分签名件与 legacy",
+                ConfigIntegrity.IsEnvelope(wrapped) && !ConfigIntegrity.IsEnvelope(json));
+
+            // ---- B3：暂停旗标签名 ----
+            DateTime pauseAt = new DateTime(2026, 10, 8, 13, 0, 0);
+            string flag = ConfigIntegrity.WrapPause(key, pauseAt);
+            DateTime outPause;
+            Check("暂停旗标：签发后能解出且时间一致",
+                ConfigIntegrity.TryUnwrapPause(key, flag, out outPause) && outPause == pauseAt);
+            Check("暂停旗标：学生 echo 的伪造时间戳被判伪造（B3 免死金牌作废）",
+                !ConfigIntegrity.TryUnwrapPause(key, "2026-10-08T13:00:00", out outPause));
+            Check("暂停旗标：改了时间的真信封也验签失败",
+                !ConfigIntegrity.TryUnwrapPause(key,
+                    ConfigIntegrity.WrapPause(key, pauseAt.AddHours(1)).Replace(pauseAt.AddHours(1).Ticks.ToString(), pauseAt.Ticks.ToString()),
+                    out outPause));
+            Check("暂停旗标：降级态（无密钥）才接受 legacy 时间戳",
+                ConfigIntegrity.TryUnwrapPause(null, "2026-10-08T13:00:00", out outPause));
+
+            // ---- B4c：空密码散列 fail-closed ----
+            Check("已安装+散列空 = 受损（fail-closed）", ConfigIntegrity.IsSuspiciousEmptyPassword(true, ""));
+            Check("未安装+散列空 = 正常未配置", !ConfigIntegrity.IsSuspiciousEmptyPassword(false, ""));
+            Check("已安装+散列在 = 正常", !ConfigIntegrity.IsSuspiciousEmptyPassword(true, "pbkdf2$..."));
+
+            // ---- C4：口令退避序列 ----
+            var gate = new System.Func<int, int>(LabGuard.Core.UI.PasswordGate.BackoffSeconds);
+            Check("口令退避：前 2 次免费（老师手滑不该被罚）", gate(1) == 0 && gate(2) == 0);
+            Check("口令退避：第 3 次起 2/4/8 秒递增", gate(3) == 2 && gate(4) == 4 && gate(5) == 8);
+            Check("口令退避：高位 128/256 秒", gate(9) == 128 && gate(10) == 256);
+            Check("口令退避：封顶 300 秒且不再增长", gate(11) == 300 && gate(12) == 300 && gate(30) == 300);
+
+            // ---- C4：手势防穷举 ----
+            Check("手势错误 19 次还没熔断", !UnlockGesture.BruteForceTripped(19));
+            Check("手势错误 20 次触发熔断", UnlockGesture.BruteForceTripped(20));
+
+            // ---- A5：拉起目标锚定"缺失的那个" ----
+            string tmp = Path.Combine(Path.GetTempPath(), "lg-redteam-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tmp);
+            try
+            {
+                string studentExe = Path.Combine(tmp, "Student.exe");
+                string voiExe = Path.Combine(tmp, "VoiClient.exe");
+                File.WriteAllText(studentExe, "x");
+                File.WriteAllText(voiExe, "x");
+                var candidates = new List<ClassroomCandidate>
+                {
+                    // 现场还原：Student 死后，DetectBest 挑中了正在运行的 VoiClient
+                    new ClassroomCandidate { Path = voiExe, ProcessName = "VoiClient.exe", Source = "正在运行" },
+                    new ClassroomCandidate { Path = studentExe, ProcessName = "Student.exe", Source = "服务：MMPC（噢易多媒体教学系统）" }
+                };
+                Check("拉起锚定：缺 Student.exe 就必须拉 Student.exe（A5 核心回归）",
+                    ClassroomGuard.ResolveRelaunchPath("Student.exe", null, candidates) == studentExe);
+                Check("拉起锚定：缺 VoiClient 时才拉 VoiClient",
+                    ClassroomGuard.ResolveRelaunchPath("VoiClient.exe", null, candidates) == voiExe);
+                Check("拉起锚定：找不到路径返回 null（绝不拿别的进程顶替）",
+                    ClassroomGuard.ResolveRelaunchPath("NotExist.exe", null, candidates) == null);
+                Check("拉起锚定：手填 MainExecutable 仅当文件名一致才生效",
+                    ClassroomGuard.ResolveRelaunchPath("Student.exe", voiExe, candidates) == studentExe
+                    && ClassroomGuard.ResolveRelaunchPath("VoiClient.exe", voiExe, candidates) == voiExe);
+
+                // ---- A5：识别不漂移（学生端本体在磁盘上 = 压过正在运行的云桌面客户端）----
+                string reason;
+                var best = ClassroomDetector.PickBest(candidates, out reason);
+                Check("识别不漂移：磁盘上的 Student.exe 压过正在运行的 VoiClient",
+                    best != null && best.Path == studentExe, reason);
+            }
+            finally { try { Directory.Delete(tmp, true); } catch { } }
         }
 
         private static void TestDnsRule()

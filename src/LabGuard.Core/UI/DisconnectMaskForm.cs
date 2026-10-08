@@ -99,6 +99,7 @@ namespace LabGuard.Core.UI
 
         private UnlockGesture _gesture;
         private DateTime _gestureHintUntil = DateTime.MinValue;
+        private int _gestureMistakes;   // 红队 C4：本次遮罩生命周期内的手势错误计数（防穷举）
 
         /// <summary>
         /// 把「老师怎么解锁 / 遮罩上显示什么」这几项从配置一次性注入。
@@ -495,7 +496,8 @@ namespace LabGuard.Core.UI
                 // ① 手势通道：**全程不需要放开硬锁、不需要任何输入框**。
                 //    实测证明 BlockInput(TRUE) 期间低级键盘钩子照常工作（见 docs/06），
                 //    所以这条通道根本不碰 InputLock / 钩子放行 / 窗口层级 —— 那正是近三轮 Bug 的共同根源。
-                if (GestureOn && _gesture != null)
+                //    红队 C4：错误次数超限后本次遮罩关闭手势通道（防穷举；界面上不吭声，避免泄露通道存在）
+                if (GestureOn && _gesture != null && !UnlockGesture.BruteForceTripped(_gestureMistakes))
                 {
                     GestureResult r = _gesture.KeyDown(vk, DateTime.Now);
                     // 只记录"激活期间 + 有变化"的按键，避免学生乱按把日志刷爆
@@ -510,7 +512,13 @@ namespace LabGuard.Core.UI
                         return;
                     }
                     if (r == GestureResult.Mistake || r == GestureResult.Timeout)
-                        _gestureHintUntil = DateTime.Now.AddSeconds(2);   // 按错要给一点反馈，否则老师以为机器坏了
+                    {
+                        _gestureMistakes++;
+                        if (UnlockGesture.BruteForceTripped(_gestureMistakes))
+                            Log.Warn("[手势] 错误次数过多（>" + UnlockGesture.MaxMistakesPerSession + "），本次遮罩已关闭手势通道（防穷举）");
+                        else
+                            _gestureHintUntil = DateTime.Now.AddSeconds(2);   // 按错要给一点反馈，否则老师以为机器坏了
+                    }
                     if (r != GestureResult.None) UpdateBottomLine();
                 }
 

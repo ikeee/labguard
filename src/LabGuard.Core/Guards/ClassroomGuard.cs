@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -32,6 +33,13 @@ namespace LabGuard.Core.Guards
 
         private string _runningProcessName;
         private int _killedCount;
+        private int _consecutiveMissing;
+        private DateTime _lastRelaunchAttempt = DateTime.MinValue;
+
+        /// <summary>两次拉起尝试之间的最小间隔：拉起的进程可能要几秒才落地，连着 Start 只会制造空转噪音（红队 A5）。</summary>
+        private static readonly TimeSpan RelaunchThrottle = TimeSpan.FromSeconds(15);
+        /// <summary>连续缺失多少轮（≈30 秒）升级为 ERROR：告诉老师"不是闪退，是拉不回来了"。</summary>
+        private const int MissingEscalateRounds = 6;
 
         protected override void OnStart()
         {
@@ -87,13 +95,21 @@ namespace LabGuard.Core.Guards
             if (procs.Length == 0)
             {
                 _killedCount++;
+                _consecutiveMissing++;
                 SetStatus("关键客户端未运行（第 " + _killedCount + " 次检测到）");
                 Context.Report(Name, "未找到课堂软件进程（或本机网络地址异常）。", HostAction(),
                     "进程：" + procName);
-                if (c.RelaunchWhenKilled) Relaunch();
+                if (_consecutiveMissing == MissingEscalateRounds)
+                {
+                    // 检测 ≠ 恢复（红队 A5）：30 秒还没拉回来，必须让老师看得出"没救回来"
+                    Log.Error("关键客户端 " + procName + " 已连续约 " + (MissingEscalateRounds * IntervalMs / 1000)
+                        + " 秒未能拉回——请现场检查（第三方自身守护可能也失效，如噢易 MMPC 的 Get Wrong Token）");
+                }
+                if (c.RelaunchWhenKilled) Relaunch(procName);
             }
             else
             {
+                _consecutiveMissing = 0;
                 foreach (Process p in procs)
                 {
                     if (c.ResumeWhenSuspended && SystemActions.IsProcessSuspended(p))
@@ -262,27 +278,24 @@ namespace LabGuard.Core.Guards
             return ViolationAction.Notify;
         }
 
-        private void Relaunch()
+        /// <summary>
+        /// 拉起"缺失的那个关键客户端"。红队 A5 教训：**绝不能退化成"随便拉一个课堂软件"**——
+        /// 旧的 DetectBest 会挑中正在运行的 VoiClient（云桌面客户端），对它空转拉起 3 分钟，
+        /// 而真缺的 Student.exe 始终没人管。目标必须锚定缺失进程的名字。
+        /// </summary>
+        private void Relaunch(string missingProcName)
         {
+            if (DateTime.Now - _lastRelaunchAttempt < RelaunchThrottle) return;
+            _lastRelaunchAttempt = DateTime.Now;
+
             var c = Context.Config.Classroom;
-            string path = !string.IsNullOrWhiteSpace(c.MainExecutable) && File.Exists(c.MainExecutable)
-                ? c.MainExecutable
-                : null;
+            string path = ResolveRelaunchPath(missingProcName, c.MainExecutable, ClassroomDetector.DetectAll());
             if (path == null)
             {
-                // 先问自动识别（能拿到正在运行/服务目录里的真实路径），再退回到常见安装位置
-                string reason;
-                var best = Core.Interop.ClassroomDetector.DetectBest(out reason);
-                if (best != null && File.Exists(best.Path)) path = best.Path;
+                Log.Error("关键客户端 " + missingProcName + " 缺失，但在本机找不到它的安装路径，无法拉起"
+                    + "——请在设置里手动填写学生端程序路径");
+                return;
             }
-            if (path == null)
-            {
-                foreach (var hint in DefaultBlocklists.ClassroomHints)
-                {
-                    if (File.Exists(hint.Value)) { path = hint.Value; break; }
-                }
-            }
-            if (path == null) return;
 
             if (Log.DryRun)
             {
@@ -292,9 +305,35 @@ namespace LabGuard.Core.Guards
             try
             {
                 Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-                Log.Warn("已重新启动电子教室客户端 " + path);
+                Log.Warn("已重新启动电子教室客户端 " + path + "（缺失进程：" + missingProcName + "）");
             }
             catch (Exception ex) { Log.Warn("重启电子教室客户端失败：" + ex.Message); }
+        }
+
+        /// <summary>
+        /// 为"缺失的进程名"解析应拉起的完整路径（纯判定，便于自检）：
+        /// 1) 设置里手填的 MainExecutable，但**仅当文件名与缺失进程一致**才可用；
+        /// 2) 识别候选里按进程名匹配（磁盘证据优先于"正在运行"——它现在恰恰不在运行）；
+        /// 3) 都找不到返回 null（调用方记录 ERROR，**绝不允许**拿别的进程顶替）。
+        /// </summary>
+        public static string ResolveRelaunchPath(string missingProcName, string mainExecutable,
+            IEnumerable<ClassroomCandidate> candidates)
+        {
+            if (string.IsNullOrWhiteSpace(missingProcName)) return null;
+            if (!string.IsNullOrWhiteSpace(mainExecutable)
+                && string.Equals(Path.GetFileName(mainExecutable), missingProcName, StringComparison.OrdinalIgnoreCase)
+                && File.Exists(mainExecutable))
+            {
+                return mainExecutable;
+            }
+            var match = (candidates ?? Enumerable.Empty<ClassroomCandidate>())
+                .Where(c => c != null && !string.IsNullOrWhiteSpace(c.Path) && File.Exists(c.Path)
+                    && string.Equals(
+                        string.IsNullOrWhiteSpace(c.ProcessName) ? Path.GetFileName(c.Path) : c.ProcessName,
+                        missingProcName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(c => c.Source == "正在运行" ? 1 : 0)
+                .FirstOrDefault();
+            return match == null ? null : match.Path;
         }
 
         protected override void OnStop() { }

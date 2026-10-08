@@ -2,7 +2,9 @@
   卸载【LabGuard】并还原系统设置。
   必须用【管理员】PowerShell 运行：
       powershell -ExecutionPolicy Bypass -File uninstall.ps1
-  带 -Force 时不弹密码（用于批量维护）。
+  带 -Password 时不弹密码框（用于批量维护）。
+  注意：v0.07 起 -ForceReset 不再免密（红队 B9：--force 自杀开关已拆）——
+        忘记密码请改用同目录 cleanup-all.ps1（纯 PowerShell 后门，不依赖任何程序文件）。
 #>
 [CmdletBinding()]
 param([switch]$ForceReset, [switch]$KeepFiles, [string]$Password)
@@ -33,11 +35,15 @@ if (Test-Path $uninstaller) {
     $arguments = @()
     if ($Password) { $arguments += @('--password', $Password) }
     if ($ForceReset) {
-        Write-Host '⚠ 已选择 -ForceReset：跳过密码校验（仅在老师忘记密码时使用，会记录到日志）。' -ForegroundColor Yellow
-        $arguments += '--force'
+        # 红队 B9：--force 免密是"编译在学生机里的自杀开关"，v0.07 已拆。
+        # 忘记密码的救援通道 = cleanup-all.ps1（老师介质上的纯脚本后路）。
+        $cleanup = Join-Path $here 'cleanup-all.ps1'
+        Write-Host '⚠ -ForceReset 已不再免密（v0.07 起）。改走 cleanup-all.ps1 彻底清理…' -ForegroundColor Yellow
+        if (Test-Path $cleanup) { & $cleanup -Force -KeepFiles:$KeepFiles; exit $LASTEXITCODE }
+        throw '未找到 cleanup-all.ps1——请从老师介质重新获取后再执行忘记密码卸载。'
     }
     Write-Host '调用卸载程序执行"还原系统设置"…（需要小助手密码，或用 -Password 提供）'
-    if ($Password -or $ForceReset) { $arguments += '--quiet' }   # 有密码/强制时才静默，否则让程序弹密码框
+    if ($Password) { $arguments += '--quiet' }   # 有密码才静默，否则让程序弹密码框
     Start-Process -FilePath $uninstaller -ArgumentList $arguments -Wait
 } else {
     Write-Host '未找到 LabGuard.Uninstall.exe，仅清理服务与自启动。' -ForegroundColor Yellow

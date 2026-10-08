@@ -17,6 +17,10 @@ namespace LabGuard.Core.UI
         /// <summary>本次框内「提交了但校验失败」的次数。0 = 老师压根没试、只是关掉了窗口。</summary>
         public int FailedAttempts { get; private set; }
 
+        private readonly Button _ok;
+        private System.Windows.Forms.Timer _cooldownTimer;
+        private int _cooldownLeft;
+
         public PasswordDialog(string title, string prompt, string passwordHash, bool confirmNew = false)
         {
             Text = title;
@@ -44,6 +48,7 @@ namespace LabGuard.Core.UI
             };
             var ok = new Button { Text = "确 定", Left = 194, Top = 128, Width = 78, Height = 28, DialogResult = DialogResult.None };
             var cancel = new Button { Text = "取 消", Left = 278, Top = 128, Width = 78, Height = 28, DialogResult = DialogResult.Cancel };
+            _ok = ok;
 
             ok.Click += (s, e) =>
             {
@@ -63,12 +68,22 @@ namespace LabGuard.Core.UI
                     string error = PasswordHasher.Validate(pwd);
                     if (error != null) { _hint.Text = error; return; }
                 }
-                else if (!string.IsNullOrEmpty(passwordHash) && !PasswordHasher.Verify(pwd, passwordHash))
+                else if (string.IsNullOrEmpty(passwordHash))
+                {
+                    // 红队 B4c：散列为空时"任一非空口令都通过"是篡改者开的后门，必须 fail-closed
+                    _hint.Text = "配置已损坏，无法验证口令";
+                    Log.Warn("口令校验被拒绝：配置中的密码散列为空（疑似被篡改）");
+                    return;
+                }
+                else if (!PasswordHasher.Verify(pwd, passwordHash))
                 {
                     FailedAttempts++;                    // 让调用方能区分「输错」和「直接取消」
-                    _hint.Text = "密码不正确（已试 " + FailedAttempts + " 次）";
                     Log.Warn("口令校验失败（" + Text + "）：提交内容长度 " + pwd.Length);
                     _box.Clear();
+                    // 红队 C4：无限重试必须有代价——指数退避（第 3 次失败起，2/4/8…秒，封顶 300）
+                    int wait = PasswordGate.BackoffSeconds(FailedAttempts);
+                    if (wait > 0) StartCooldown(wait);
+                    else _hint.Text = "密码不正确（已试 " + FailedAttempts + " 次）";
                     return;
                 }
                 Password = pwd;
@@ -83,6 +98,35 @@ namespace LabGuard.Core.UI
             // 必须显式把焦点给到输入框：这类框是从全屏窗口（TopMost）之上弹出的，
             // 默认焦点可能落在按钮上，老师就得先点一下输入框才能打字 —— 很容易被当成"打不出字"。
             Shown += (s, e) => { Activate(); _box.Focus(); _box.Select(0, 0); };
+        }
+
+        /// <summary>退避冷却：禁用输入与确定按钮，逐秒倒数后恢复（红队 C4）。</summary>
+        private void StartCooldown(int seconds)
+        {
+            _cooldownLeft = seconds;
+            _ok.Enabled = false;
+            _box.Enabled = false;
+            _hint.Text = "密码不正确（已试 " + FailedAttempts + " 次），请 " + seconds + " 秒后再试";
+            _cooldownTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+            _cooldownTimer.Tick += (s, e) =>
+            {
+                _cooldownLeft--;
+                if (_cooldownLeft <= 0)
+                {
+                    _cooldownTimer.Stop();
+                    _cooldownTimer.Dispose();
+                    _cooldownTimer = null;
+                    _ok.Enabled = true;
+                    _box.Enabled = true;
+                    _hint.Text = "可以再试了（已试 " + FailedAttempts + " 次）";
+                    _box.Focus();
+                }
+                else
+                {
+                    _hint.Text = "密码不正确（已试 " + FailedAttempts + " 次），请 " + _cooldownLeft + " 秒后再试";
+                }
+            };
+            _cooldownTimer.Start();
         }
     }
 }

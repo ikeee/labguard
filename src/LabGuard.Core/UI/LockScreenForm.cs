@@ -20,6 +20,8 @@ namespace LabGuard.Core.UI
         private readonly TextBox _password;
         private readonly Timer _watch;
         private readonly string _passwordHash;
+        private int _failedAttempts;                 // 红队 C4：锁屏口令失败计数（防暴破）
+        private DateTime _lockedOutUntil = DateTime.MinValue;
         private readonly Panel _stage;      // 覆盖"所有显示器"的底色层
         private readonly Panel _content;    // 贴在主显示器上居中的内容层
         private Func<bool> _resolved;
@@ -81,13 +83,36 @@ namespace LabGuard.Core.UI
             _password.KeyDown += (s, e) =>
             {
                 if (e.KeyCode != Keys.Enter) return;
+                // 红队 C4：空散列 = 配置被清过，绝不能"任意口令放行"
+                if (string.IsNullOrEmpty(_passwordHash))
+                {
+                    _titleLabel.Text = "配置已损坏，无法验证口令";
+                    Logging.Log.Warn("锁屏口令校验被拒绝：配置中的密码散列为空（疑似被篡改）");
+                    _password.Clear();
+                    return;
+                }
+                // 红队 C4：退避中不接收尝试（指数退避，与 PasswordDialog 同一套）
+                if (DateTime.Now < _lockedOutUntil)
+                {
+                    _titleLabel.Text = "请稍候再试（防暴力破解）";
+                    _password.Clear();
+                    return;
+                }
                 if (PasswordHasher.Verify(_password.Text, _passwordHash))
                 {
                     Unlock_AndClose();
                 }
                 else
                 {
-                    _titleLabel.Text = "密码不正确，请重新输入";
+                    // 红队 C4/C10：以前这里既不计数也不写日志——在线暴破零痕迹零节流
+                    _failedAttempts++;
+                    int wait = PasswordGate.BackoffSeconds(_failedAttempts);
+                    if (wait > 0) _lockedOutUntil = DateTime.Now.AddSeconds(wait);
+                    _titleLabel.Text = wait > 0
+                        ? "密码不正确（第 " + _failedAttempts + " 次），" + wait + " 秒后再试"
+                        : "密码不正确，请重新输入";
+                    Logging.Log.Warn("锁屏口令校验失败（第 " + _failedAttempts + " 次）"
+                        + (wait > 0 ? "，退避 " + wait + " 秒" : ""));
                     _password.Clear();
                 }
             };
