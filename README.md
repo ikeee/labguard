@@ -289,6 +289,18 @@ LabGuard.Agent.exe --unlock-drill --gesture --no-lock :: 手势通道但不锁�
 
 <img src="docs/screenshots/disconnect-mask.png" width="820" alt="断网全屏遮罩">
 
+**注意图上没有"怎么解锁"的提示——这是故意的。** 遮罩是给学生看的，印上解锁方式等于把钥匙挂在锁上。
+下面这张是打开设置里「遮罩上提示老师怎么解除」之后的样子（**仅建议新手老师培训期临时打开**）：
+
+<img src="docs/screenshots/disconnect-mask-with-hint.png" width="820" alt="打开解锁提示后的遮罩（默认关闭）">
+
+两张图都能自己复现（读的是本机配置，`--with-hint` 不写回配置）：
+
+```
+LabGuard.Settings.exe --screenshot-mask D:\mask.png
+LabGuard.Settings.exe --screenshot-mask D:\mask-hint.png --with-hint
+```
+
 ### 8.2 违规被改回时：全屏锁定屏
 
 键盘钩子只在上锁期间生效——**老师输密码解除后会自动卸载**（否则解锁了却没法 Alt+Tab 切窗口）。
