@@ -14,6 +14,9 @@ namespace LabGuard.Core.UI
 
         public string Password { get; private set; }
 
+        /// <summary>本次框内「提交了但校验失败」的次数。0 = 老师压根没试、只是关掉了窗口。</summary>
+        public int FailedAttempts { get; private set; }
+
         public PasswordDialog(string title, string prompt, string passwordHash, bool confirmNew = false)
         {
             Text = title;
@@ -24,14 +27,23 @@ namespace LabGuard.Core.UI
             TopMost = true;
             MaximizeBox = false;
             MinimizeBox = false;
-            ClientSize = new Size(380, 150);
+            ClientSize = new Size(380, 172);
             Font = new Font("微软雅黑", 9F);
 
             var label = new Label { Text = prompt, Left = 16, Top = 18, Width = 340, Height = 22 };
             _box = new TextBox { Left = 16, Top = 46, Width = 340, UseSystemPasswordChar = true };
             _hint = new Label { Left = 16, Top = 74, Width = 340, Height = 20, ForeColor = Color.Firebrick };
-            var ok = new Button { Text = "确 定", Left = 194, Top = 104, Width = 78, Height = 28, DialogResult = DialogResult.None };
-            var cancel = new Button { Text = "取 消", Left = 278, Top = 104, Width = 78, Height = 28, DialogResult = DialogResult.Cancel };
+            // 忘记密码只指向"找管理员"，绝不在这里写救援命令/路径：
+            // 这个框学生也看得到，写命令=把后门贴给学生（救援办法只印在老师自己的介质上）。
+            var tip = new Label
+            {
+                Text = PasswordGate.ForgotPasswordTip,
+                Left = 16, Top = 100, Width = 340, Height = 18,
+                ForeColor = Color.DimGray,
+                Font = new Font("微软雅黑", 8.25F)
+            };
+            var ok = new Button { Text = "确 定", Left = 194, Top = 128, Width = 78, Height = 28, DialogResult = DialogResult.None };
+            var cancel = new Button { Text = "取 消", Left = 278, Top = 128, Width = 78, Height = 28, DialogResult = DialogResult.Cancel };
 
             ok.Click += (s, e) =>
             {
@@ -53,7 +65,8 @@ namespace LabGuard.Core.UI
                 }
                 else if (!string.IsNullOrEmpty(passwordHash) && !PasswordHasher.Verify(pwd, passwordHash))
                 {
-                    _hint.Text = "密码不正确，请重新输入！";
+                    FailedAttempts++;                    // 让调用方能区分「输错」和「直接取消」
+                    _hint.Text = "密码不正确（已试 " + FailedAttempts + " 次）";
                     Log.Warn("口令校验失败（" + Text + "）：提交内容长度 " + pwd.Length);
                     _box.Clear();
                     return;
@@ -63,7 +76,7 @@ namespace LabGuard.Core.UI
                 Close();
             };
 
-            Controls.AddRange(new Control[] { label, _box, _hint, ok, cancel });
+            Controls.AddRange(new Control[] { label, _box, _hint, tip, ok, cancel });
             AcceptButton = ok;
             CancelButton = cancel;
 

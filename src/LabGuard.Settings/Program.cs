@@ -246,15 +246,42 @@ namespace LabGuard.Settings
             // 已设置密码则必须先通过密码才能改设置
             if (!string.IsNullOrEmpty(config.PasswordHash))
             {
-                using (var dlg = new PasswordDialog("LabGuard - 设置", "输入小助手密码：", config.PasswordHash))
+                // 这里曾出过两类真机问题，修法都已固化成自检 [5.9] 的断言：
+                //   ① 密码框标题以前叫「LabGuard - 设置」，和真正的设置窗口撞脸 —— 老师以为界面坏了；
+                //   ② 老师点「取消」也被弹"密码不正确" —— 取消 ≠ 输错，那是错误归因。
+                for (int attempt = 1; attempt <= 3; attempt++)
                 {
-                    if (dlg.ShowDialog() != DialogResult.OK)
+                    int failed;
+                    using (var dlg = new PasswordDialog(
+                        LabGuard.Core.UI.PasswordGate.WindowTitle("打开设置"),
+                        "输入小助手密码（密码正确后才会打开设置界面）：", config.PasswordHash))
                     {
-                        MessageBox.Show("密码不正确，不能修改设置。", "LabGuard",
-                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        if (dlg.ShowDialog() == DialogResult.OK)
+                        {
+                            Application.EnableVisualStyles();
+                            Application.SetCompatibleTextRenderingDefault(false);
+                            Application.Run(new SettingsForm(config));
+                            return;
+                        }
+                        failed = dlg.FailedAttempts;
+                    }
+                    if (PasswordGate.WasCancelled(failed))
+                    {
+                        // 老师只是关掉了窗口，没输错过：不弹任何提示，只写日志（以前这句会冤枉人）
+                        Log.Info("打开设置：老师在密码框上点了取消（未输错），静默退出。");
                         return;
                     }
+                    if (attempt < 3)
+                    {
+                        // 输错了：自动再给一次机会（带递增延迟，别让暴力尝试刷屏），省得老师回去重新双击
+                        System.Threading.Thread.Sleep(attempt * 1000);
+                        continue;
+                    }
+                    MessageBox.Show(PasswordGate.FailureMessage("修改设置", failed), "LabGuard",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
                 }
+                return;
             }
 
             Application.EnableVisualStyles();

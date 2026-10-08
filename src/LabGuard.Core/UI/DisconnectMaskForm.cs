@@ -549,7 +549,7 @@ namespace LabGuard.Core.UI
                 //   3) TopMost + owner    → 不会被 TopMost 的全屏遮罩压住。
                 _teacherDialogOpen = true;
                 Log.Info("[遮罩] 已弹出老师密码框：键盘钩子临时放行，输入硬锁 holds=" + InputLock.HoldsCount);
-                using (var dlg = new PasswordDialog("LabGuard · 解除断网遮罩",
+                using (var dlg = new PasswordDialog(PasswordGate.WindowTitle("解除断网遮罩"),
                            "输入小助手密码（解除后监控会暂停，避免马上又弹出）：", _passwordHash))
                 {
                     // 两个都要：owner 让对话框永远压在遮罩（它是 TopMost）之上；TopMost 再兜一层。

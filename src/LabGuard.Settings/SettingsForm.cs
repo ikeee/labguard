@@ -27,8 +27,9 @@ namespace LabGuard.Settings
         public SettingsForm(GuardConfig config)
         {
             _config = config;
-            Text = LabGuard.Core.AppInfo.ProductName + " v" + LabGuard.Core.AppInfo.Version +
-                   " · 设置（所有功能均可自行开关）";
+            // 标题统一走 PasswordGate：保证和密码框的标题来自同一个来源，
+            // 自检 [5.9] 断言「两者不同」时才不会各改各的又撞回一起去
+            Text = LabGuard.Core.UI.PasswordGate.SettingsWindowTitle();
             Font = new Font("微软雅黑", 9F);
             ClientSize = new Size(1000, 760);
             StartPosition = FormStartPosition.CenterScreen;

@@ -430,6 +430,38 @@ namespace LabGuard.SelfTest
             catch (Exception ex) { Check("配置注入：构造遮罩并注入配置不抛异常（" + ex.Message + "）", false); }
             finally { Log.MinLevel = savedLevel; }
 
+            Console.WriteLine("[5.9] 密码门禁不冤枉老师、不给学生留线索");
+            Check("设置程序的密码框标题 ≠ 设置主窗口标题（曾因撞脸被当成\"界面坏了\"）",
+                LabGuard.Core.UI.PasswordGate.WindowTitle("打开设置") != LabGuard.Core.UI.PasswordGate.SettingsWindowTitle());
+            Check("密码框标题一眼能看出\"在要密码\"（含「输入密码」字样）",
+                LabGuard.Core.UI.PasswordGate.WindowTitle("打开设置").Contains("输入密码"));
+            Check("忘记密码提示不泄露任何救援手段（cleanup/force/uninstall/路径/命令都没有）",
+                !LabGuard.Core.UI.PasswordGate.LeaksRescueMethod(LabGuard.Core.UI.PasswordGate.ForgotPasswordTip));
+            Check("泄露判定认得各种形态（cleanup-all / --force / --init / .ps1 / 路径）",
+                LabGuard.Core.UI.PasswordGate.LeaksRescueMethod("运行 cleanup-all.ps1") &&
+                LabGuard.Core.UI.PasswordGate.LeaksRescueMethod("加 --force 可强制卸载") &&
+                LabGuard.Core.UI.PasswordGate.LeaksRescueMethod("Settings.exe --init 123456") &&
+                LabGuard.Core.UI.PasswordGate.LeaksRescueMethod("去 C:\\Program Files\\LabGuard 删掉") &&
+                !LabGuard.Core.UI.PasswordGate.LeaksRescueMethod("请联系机房管理员"));
+            Check("「点取消」不算密码错误（老师主动关窗 → 不弹任何提示）",
+                LabGuard.Core.UI.PasswordGate.WasCancelled(0) &&
+                LabGuard.Core.UI.PasswordGate.FailureMessage("修改设置", 0) == null);
+            Check("「真的输错」才提示，且说清试了几次",
+                !LabGuard.Core.UI.PasswordGate.WasCancelled(2) &&
+                LabGuard.Core.UI.PasswordGate.FailureMessage("修改设置", 2).Contains("2 次"));
+            Check("失败提示同样不泄露救援手段",
+                !LabGuard.Core.UI.PasswordGate.LeaksRescueMethod(
+                    LabGuard.Core.UI.PasswordGate.FailureMessage("修改设置", 3) ?? "（null）"));
+            Check("五个调用点（设置/卸载/托盘/解除锁定/遮罩）标题全部统一来自 PasswordGate（不再各写各的）",
+                new[]
+                {
+                    LabGuard.Core.UI.PasswordGate.WindowTitle("打开设置"),
+                    LabGuard.Core.UI.PasswordGate.WindowTitle("卸载"),
+                    LabGuard.Core.UI.PasswordGate.WindowTitle("暂停监控"),
+                    LabGuard.Core.UI.PasswordGate.WindowTitle("解除锁定/暂停监控"),
+                    LabGuard.Core.UI.PasswordGate.WindowTitle("解除断网遮罩")
+                }.All(t => t.StartsWith("LabGuard · 输入密码（") && t.EndsWith("）")));
+
             Console.WriteLine("[5.3] 断网即时归因（遮罩/日志要说清检测到什么）");
             Check("网卡消失 → 说清了网卡被禁用或拔掉",
                 NetworkGuard.DescribeDown(false, false, null).Contains("消失"));

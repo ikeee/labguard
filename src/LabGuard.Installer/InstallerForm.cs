@@ -248,9 +248,10 @@ namespace LabGuard.Installer
                 Left = 20, Top = 120, Width = 820, Height = 160, ForeColor = Color.DimGray,
                 Text = "· 6 位及以上字母或数字；不要用 123456 这类弱口令。\n" +
                        "· 这个密码用于：暂停监控、退出程序、修改设置、解除断网遮罩、卸载。\n" +
-                       "· 密码只保存 PBKDF2-SHA256 散列（10 万次迭代 + 随机盐），程序里看不到明文。\n" +
+                       "· 密码只保存 PBKDF2-SHA256 散列（10 万次迭代 + 随机盐），程序里看不到明文，忘了也找不回。\n" +
                        "· 建议不要与极域电子教室的密码相同（极域密码容易被学生查到）。\n" +
-                       "· 忘记密码时：用管理员运行安装目录里的 LabGuard.Uninstall.exe 可强制卸载并还原。"
+                       "· 请现在就把密码记下来（机房管理本/教师机）：忘记密码机器上无法找回，\n" +
+                       "  补救办法写在老师自己的文档里（docs/05-防破解与应急.md 第 6 节）。"
             };
             page.Controls.AddRange(new Control[] { l1, _pwd, l2, _pwd2, hint });
             return page;

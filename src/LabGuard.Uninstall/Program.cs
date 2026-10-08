@@ -91,10 +91,11 @@ namespace LabGuard.Uninstall
             if (!force && !string.IsNullOrEmpty(config.PasswordHash))
             {
                 bool ok = false;
+                int failed = 0;   // >0 = 真的输错了；0 = 老师只是关掉了密码框（不是密码错误）
                 if (!string.IsNullOrEmpty(givenPassword))
                 {
                     ok = PasswordHasher.Verify(givenPassword, config.PasswordHash);
-                    if (!ok) Console.Error.WriteLine("密码不正确，不能卸载。");
+                    if (!ok) { failed = 1; Console.Error.WriteLine("密码不正确，不能卸载。"); }
                 }
                 else if (quiet)
                 {
@@ -104,14 +105,19 @@ namespace LabGuard.Uninstall
                 }
                 else
                 {
-                    using (var dlg = new PasswordDialog("LabGuard - 卸载", "卸载小助手密码：", config.PasswordHash))
+                    using (var dlg = new PasswordDialog(
+                        LabGuard.Core.UI.PasswordGate.WindowTitle("卸载"),
+                        "输入小助手密码（确认卸载）：", config.PasswordHash))
                     {
                         ok = dlg.ShowDialog() == DialogResult.OK;
+                        failed = dlg.FailedAttempts;
                     }
                 }
                 if (!ok)
                 {
-                    if (!quiet) MessageBox.Show("密码不正确，不能卸载。", "LabGuard");
+                    // 取消 ≠ 密码错：老师主动关掉窗口就别再弹"密码不正确"冤枉人（自检 [5.9] 断言这条规则）
+                    string msg = LabGuard.Core.UI.PasswordGate.FailureMessage("卸载", failed);
+                    if (!quiet && msg != null) MessageBox.Show(msg, "LabGuard");
                     Environment.ExitCode = 3;
                     return;
                 }

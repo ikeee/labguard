@@ -217,7 +217,8 @@ namespace LabGuard.Agent
                 Balloon("LabGuard", "尚未设置密码，请先运行设置程序。");
                 return false;
             }
-            using (var dlg = new PasswordDialog("LabGuard - " + action, action + "密码：", _config.PasswordHash))
+            using (var dlg = new PasswordDialog(
+                LabGuard.Core.UI.PasswordGate.WindowTitle(action), action + "密码：", _config.PasswordHash))
             {
                 return dlg.ShowDialog() == DialogResult.OK;
             }

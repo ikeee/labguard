@@ -284,7 +284,9 @@ namespace LabGuard.Agent
                 MessageBox.Show("尚未设置密码，无需解锁。", "LabGuard");
                 return;
             }
-            using (var dlg = new LabGuard.Core.UI.PasswordDialog("LabGuard - 解除锁定/暂停监控", "输入小助手密码：", config.PasswordHash))
+            using (var dlg = new LabGuard.Core.UI.PasswordDialog(
+                LabGuard.Core.UI.PasswordGate.WindowTitle("解除锁定/暂停监控"),
+                "输入小助手密码：", config.PasswordHash))
             {
                 if (dlg.ShowDialog() != DialogResult.OK) return;
             }
