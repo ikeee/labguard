@@ -13,6 +13,16 @@ namespace LabGuard.Settings
         [STAThread]
         private static void Main(string[] args)
         {
+            // ① 崩溃兜底：未处理异常要留日志 + 弹说明，不能闪退得无声无息（与 Agent 同款）
+            LabGuard.Core.CrashHandler.Install("LabGuard.Settings");
+            // ② WinForms 初始化**必须在第一个窗体创建之前**——密码框也是窗体！
+            //    曾经把它放在密码校验之后，结果老师输对密码那一刻
+            //    SetCompatibleTextRenderingDefault 抛 InvalidOperationException 直接崩掉，
+            //    表现就是"输入密码后设置面板没弹出来"（2026-10-08 真机 + 事件日志 1000/1026 实锤）。
+            //    下面各命令行分支里的重复调用无害（只在首个窗体创建后才禁止）。
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+
             Log.MinLevel = LogLevel.Info;
             GuardConfig config = ConfigStore.Load();
             // --screenshot <目录>：把 14 个设置面板渲染成 PNG（供文档/人工核对），不修改配置
@@ -258,8 +268,8 @@ namespace LabGuard.Settings
                     {
                         if (dlg.ShowDialog() == DialogResult.OK)
                         {
-                            Application.EnableVisualStyles();
-                            Application.SetCompatibleTextRenderingDefault(false);
+                            // 这里绝不能再调 EnableVisualStyles / SetCompatibleTextRenderingDefault：
+                            // 密码框（窗体）已经创建过句柄，此刻再调必抛异常（见 Main 开头注释）
                             Application.Run(new SettingsForm(config));
                             return;
                         }
