@@ -1,6 +1,6 @@
 # LabGuard
 
-**当前版本：v0.01**（2026-09-24 首个公开版本）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
+**当前版本：v0.06**（2026-10-08，[全部版本](https://github.com/ikeee/labguard/releases)）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
 
 > **English TL;DR** — LabGuard is an open-source, self-healing policy guard for Windows PCs in school computer labs
 > (.NET Framework 4.8). It protects the classroom-management client (TopDomain / Red Spider / Ruijie cloud class)
@@ -52,8 +52,8 @@
 
 ## 2. 安装（用一键安装程序 `LabGuard-Setup.exe`）
 
-**推荐路径（老师用这个）**：从 [Releases](https://github.com/ikeee/labguard/releases) 下载
-**`LabGuard-Setup-v0.02.exe`**（单文件，内置全部程序）→ 拷到学生机 → **双击**（会弹 UAC）→ 按向导走：
+**推荐路径（老师用这个）**：从 [Releases](https://github.com/ikeee/labguard/releases) 下载最新版的
+**`LabGuard-Setup-vX.XX.exe`**（单文件，内置全部程序）→ 拷到学生机 → **双击**（会弹 UAC）→ 按向导走：
 
 | 向导步骤 | 你要做的事 |
 |---|---|
@@ -84,13 +84,13 @@ LabGuard.Settings.exe --show-config   # 核对当前策略（含"集中 DNS 是�
 一个机房几十台时，用发布包里的脚本更快（详见 [docs/04-机房部署指南.md](docs/04-机房部署指南.md)）：
 
 ```powershell
-# 无人值守安装（脚本方式；包在 labguard-v0.01.zip 的 dist\ 目录里）
+# 无人值守安装（脚本方式；包在 labguard-vX.XX.zip 的 dist\ 目录里）
 powershell -ExecutionPolicy Bypass -File install.ps1 -Password "你的密码123" -Dns "192.168.1.10"
 #   -Dns 只在你要用 C 档（集中 DNS）时才需要；不填就是 A 档
 #   -ConfigJson "presets\主机房-普通PC.json" 可套用预设；-DryRun 可先预演（不改系统）
 
 # 一键安装程序同样支持无人值守：
-LabGuard-Setup-v0.01.exe --silent --password "你的密码123" [--config presets\xxx.json] [--dns 192.168.1.10] [--no-start]
+LabGuard-Setup-vX.XX.exe --silent --password "你的密码123" [--config presets\xxx.json] [--dns 192.168.1.10] [--no-start]
 ```
 
 也可以从源码构建（需要 .NET SDK 8）：`scripts\build.ps1 -SelfTest` → `scripts\build-installer.ps1`（会同时产出安装程序与发布包）。
