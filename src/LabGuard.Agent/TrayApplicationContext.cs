@@ -45,7 +45,7 @@ namespace LabGuard.Agent
             {
                 _tray = new NotifyIcon
                 {
-                    Icon = SystemIcons.Shield,
+                    Icon = LabGuard.Core.AppIcon.Get(),
                     Visible = true,
                     Text = "LabGuard 机房管控"
                 };
@@ -257,7 +257,7 @@ namespace LabGuard.Agent
         {
             MessageBox.Show(
                 LabGuard.Core.AppInfo.ProductName + "  v" + LabGuard.Core.AppInfo.Version + Environment.NewLine +
-                "基于对《LabGuard v13.03》的原理分析实现，功能等价、源码开放。" + Environment.NewLine +
+                "开源软件（MIT 许可），源码开放。" + Environment.NewLine +
                 "项目地址：" + LabGuard.Core.AppInfo.RepoUrl + Environment.NewLine +
                 "配置目录：" + ConfigStore.DataDir + Environment.NewLine +
                 "日志目录：" + Log.Directory,

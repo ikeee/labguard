@@ -1,0 +1,10 @@
+<Project>
+  <!--
+    程序图标（作者 GitHub 头像）：只给可执行项目挂，类库（Core）挂图标无意义。
+    注意必须放在 .targets 而不是 .props：props 的导入时机早于项目自己的 PropertyGroup，
+    那时 $(OutputType) 还没赋值，条件永远不成立（踩过）。
+  -->
+  <PropertyGroup Condition="'$(OutputType)' == 'WinExe' or '$(OutputType)' == 'Exe'">
+    <ApplicationIcon>$(MSBuildThisFileDirectory)src\LabGuard.Core\Assets\app.ico</ApplicationIcon>
+  </PropertyGroup>
+</Project>

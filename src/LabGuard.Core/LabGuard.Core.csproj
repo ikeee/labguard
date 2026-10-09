@@ -13,6 +13,11 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
+    <!-- 程序图标（作者 GitHub 头像）：exe 挂图标走 ApplicationIcon（Directory.Build.props）；
+         这里嵌入一份是给运行时代码用（托盘 NotifyIcon 没法自动继承 exe 图标） -->
+    <EmbeddedResource Include="Assets\app.ico" />
+  </ItemGroup>
+  <ItemGroup>
     <Reference Include="System.Management" />
     <Reference Include="System.ServiceProcess" />
     <Reference Include="System.Security" />
