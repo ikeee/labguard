@@ -10,7 +10,7 @@ namespace LabGuard.Core
         /// <summary>桌面/开始菜单快捷方式显示名。</summary>
         public const string ShortcutName = "LabGuard（机房管控）";
         /// <summary>当前版本（与 git tag v0.06 对应）。</summary>
-        public const string Version = "0.06";
+        public const string Version = "0.07";
         public const string RepoUrl = "https://github.com/ikeee/labguard";
     }
 }
