@@ -19,7 +19,7 @@ LGSRV1|<seq>|<issuedAt>|<paused>|<policyJson>|<signature>
 |---|---|---|
 | 魔数 | `LGSRV1` | 版本标识；不认识的魔数整封拒绝 |
 | `seq` | uint64 | **单调递增**序列号，每次保存策略 +1；客户端拒绝 `seq <= 已应用最大 seq`（防回滚/重放） |
-| `issuedAt` | ISO-8601 UTC | 下发时间，仅用于展示与日志，**不参与到期判断**（客户端不依赖墙钟） |
+| `issuedAt` | ISO-8601 UTC | 下发时间，仅用于展示与日志，**不参与到期判断**（客户端不依赖墙钟）。**规范化格式 = .NET `"o"` 往返格式**（`yyyy-MM-ddTHH:mm:ss.fffffffZ`，UTC，7 位小数、末尾 `Z`）；它属于被签名字节，服务端必须按此格式生成，客户端解析用 `DateTimeStyles.RoundtripKind` |
 | `paused` | 0/1 | **全员暂停标志**：「全员暂停」= 以 `paused=1` 保存策略（seq+1），「全员恢复」= `paused=0`（seq+1）。学生机收到后进入与本地老师暂停等价的状态（策略停、进程守护照旧）。并入信封使其同样受签名与 seq 保护——**伪服务器无法伪造暂停指令** |
 | `policyJson` | JSON 字符串 | 与客户端 `GuardConfig` 序列化格式**完全一致**（schema 由客户端 `catalog.json` 承载） |
 | `signature` | base64 | RSA-SHA256（2048 位，PKCS#1 v1.5），对前五段拼接 `LGSRV1|seq|issuedAt|paused|policyJson` 的 UTF-8 字节签名；私钥仅存教师机（DPAPI + ACL），公钥随配对文件 pin 到学生机 |
@@ -30,15 +30,39 @@ LGSRV1|<seq>|<issuedAt>|<paused>|<policyJson>|<signature>
 - 落盘文件即下发内容：`GET /api/policy` 直接返回该文件原文。
 - 跨语言兼容性（M1 互测实证）：信封可被 Python + openssl 独立解析与验签，不依赖 .NET。
 
+### 2.2 seq 持久化与水位（重启防回退）
+
+> 为什么必须有水位：磁盘信封只能证明"这份策略是服务器签的"，**证明不了"它是最新的"**。
+> 一份旧信封被人放回磁盘时验签照样通过，服务端的 `seq` 计数器就会往回走 ——
+> 之后老师再保存策略，可能生成一个**客户端已经见过/已应用过的 seq**，导致所有学生机
+> 把它当"没有更新"而静默忽略（策略再也发不出去）。
+
+- 服务端在数据目录维护 **`seq.highwater`**：`{"schemaVersion":1,"seq":N}`，
+  记录**已发布过的最大 seq**。文件用"临时文件 + 刷盘 + 原子替换"写入（同 §2.1 的落盘纪律）。
+- **保存**：`seq = max(当前内存 seq, 水位) + 1` —— 已发布过的 seq 永不复用。
+- **加载**（含服务重启）：先读水位，再把"水位 / 调用方给的 `minSeq`"里较大的那个当**下限**；
+  磁盘信封 `seq` 低于下限直接拒绝加载（`RELOAD-REJECTED` 口径，保留内存现行信封）。
+  也就是说：**重启路径也必须拒绝旧信封**，不能只在"重载"路径上防。
+- 水位文件缺失 / 损坏 / `schemaVersion` 不认识 → 按 0 处理并记 `WARN`（降级为"无回退保护"，
+  但**不阻断启动**；此时 `Save` 仍以内存中的当前 seq 为准，不会倒着走）。
+
+### 2.3 落盘与安全写入
+
+策略信封、水位文件、密钥文件一律走**同目录临时文件 → `Flush(true)` 刷盘 → 原子替换**
+（`AtomicFile`）。任何时刻读者只会看到"旧内容"或"新内容"，不会看到被断电截断的半份文件。
+
 ## 3. HTTP API（教师机，默认 `http://+:8210/`）
 
 | 方法与路径 | 请求 | 响应 | 说明 |
 |---|---|---|---|
 | `GET /api/version` | — | `{"seq":123,"sha256":"…","paused":false}` | 轻量探测：客户端对比 seq/sha，无变化不拉全文；`paused` 供托盘/面板展示。`sha256` = **信封全文的 SHA-256**，客户端可直接用作完整性 pin |
 | `GET /api/policy` | — | `text/plain; charset=utf-8`：LGSRV1 信封全文 | 全量策略下发 |
-| `POST /api/checkin` | `{"machine":"PC-01","version":"0.10","seq":123,"paused":false}` | `{"ok":true}` | 心跳上报；服务端聚合出在线学生机列表（默认 60s 无心跳判离线） |
+| `POST /api/checkin` | `{"machine":"PC-01","version":"0.10.4","seq":123,"paused":false,"deviceId":"LG-1a2b…","appliedSeq":123,"status":"ok"}` | `{"ok":true}` | 心跳上报；服务端聚合出在线学生机列表与**每台设备的策略应用状态**（默认 60s 无心跳判离线） |
 
-- 状态码：`200` 正常；`400` 请求非法（坏 JSON / 字段类型错乱 / 缺 machine）；`404` 路径不存在；`408` 请求体超时（发了 Content-Length 不发 body 的慢客户端，5 秒断开）；`413` 请求体超限（>8KB，Content-Length 先验即拒、不读流）；`429` 限速；`503` 服务端未就绪（未配置策略/密钥）。
+- 编码：请求体按 `Content-Encoding`（缺省 UTF-8）解码；响应一律 UTF-8
+  （`/api/version`、`/api/checkin` 为 `application/json`，`/api/policy` 为 `text/plain; charset=utf-8`）。
+- 状态码：`200` 正常；`400` 请求非法（**空请求体** / 坏 JSON / 字段类型错乱 / 缺 machine）；`404` 路径不存在（**含未定义的 HTTP 方法**，如 `PUT /api/checkin`）；`408` 请求体超时（发了 Content-Length 不发 body 的慢客户端，5 秒断开）；`413` 请求体超限（>8KB，Content-Length 先验即拒、不读流）；`429` 限速；`503` **尚未保存过策略**（唯一触发条件；密钥缺失时服务端根本不会启动，因此不可能返回 503）。
+- 未知 JSON 字段一律**忽略**（向前兼容：旧服务端遇到新客户端带来的新字段不得报错）。
 - 客户端请求超时 3 秒（网卡阻塞坑：轮询线程必须是后台线程 + 超时 + 代际号，禁止放 UI 线程）。
 - 服务端对 `/api/checkin` 限速（**同 IP 每秒 ≤5 次**；每台学生机独立 IP、每 60s 一次心跳，正常部署不受影响。限速表 >1024 条目时清理 60 秒无活动的 IP，防洪泛换 IP 撑爆内存）。
 - **HEAD 与 GET 等价**（不写 body）：监控探活可直接 `HEAD /api/version`。
@@ -50,8 +74,32 @@ LGSRV1|<seq>|<issuedAt>|<paused>|<policyJson>|<signature>
 |---|---|---|---|
 | `machine` | 是 | 字符串，1~256 字符 | `400 missing or invalid machine` |
 | `version` | 否 | 字符串 ≤32 字符；**给了但类型不对 → 400**（不悄悄吞） | `400 invalid version` |
-| `seq` | 否 | 整数（≥0）；字符串/负数/溢出一律拒绝 | `400 invalid seq` |
+| `seq` | 否 | JSON 数字且**取值为非负整数**（`12` 与 `12.0` 都算；底层类型可能是 int/long/ulong/decimal/double）；字符串/负数/**有小数部分**/溢出一律拒绝 | `400 invalid seq` |
 | `paused` | 否 | 布尔 | 忽略其他类型 |
+
+### checkin 字段校验（v0.10.4 增补：设备身份与策略确认）
+
+| 字段 | 必填 | 合法类型 | 违规响应 | 说明 |
+|---|---|---|---|---|
+| `deviceId` | 否 | 字符串 ≤64；建议 `LG-` + 16 位十六进制 | `400 invalid deviceId` | **稳定设备身份**：客户端首次配对/安装时生成并落盘，重启/改机器名/换 IP 都不变。旧客户端不发送 → 服务端用 `machine` 兜底 |
+| `appliedSeq` | 否 | 整数（≥0），规则同 `seq` | `400 invalid appliedSeq` | 客户端**已成功应用**的策略序号（用于 Pending / Applied 判定） |
+| `status` | 否 | 字符串，白名单 `ok` / `error` | `400 invalid status` | 应用结果；缺省视为 `ok` |
+| `errorCode` | 否 | 字符串 ≤64 | `400 invalid errorCode` | `status=error` 时的稳定错误码（如 `LG-POLICY-APPLY-FAILED`）；不含敏感信息 |
+
+### 设备状态模型（v0.10.4，服务端在线列表展示）
+
+| 状态 | 判定 |
+|---|---|
+| `Offline` | 超过阈值（默认 60s）没有心跳 |
+| `Applied` | 有心跳，且 `appliedSeq >= 服务端当前 seq` |
+| `Pending` | 有心跳，`appliedSeq < 服务端当前 seq`（已发布新策略、该机还没用上） |
+| `Error` | 最近一次心跳 `status=error` |
+| `VersionSkew` | 客户端 `version` 的**主次版本**与服务端不一致（仍继续服务，只在列表标注） |
+| `Online` | 有心跳但没带 `appliedSeq`（旧客户端，只能证明"人在线"） |
+| `CloneSuspect` | **同一个 `deviceId` 最近来自多台不同机器名/IP** → 疑似克隆系统镜像带来的重复身份（诊断信息，不拒绝服务） |
+
+> 上报的 `deviceId` / `appliedSeq` / `status` / `errorCode` 都是**固定 schema、有长度上限、字段白名单**，
+> 属于 §1.2 允许的"客户端状态数据"，不构成通用文件传输通道。
 
 ## 4. 客户端行为状态机
 
@@ -80,6 +128,8 @@ LGSRV1|<seq>|<issuedAt>|<paused>|<policyJson>|<signature>
 教师机服务端「导出配对文件」（JSON：服务器主机名 + IP + 端口 + RSA 公钥 + 配对时间 + 指纹）→ 拷贝到学生机 → `install.ps1 -Pair <file>` 或设置面板导入。公钥写入 `C:\ProgramData\LabGuard\server-public.key`（ACL 仅 SYSTEM/Administrators）。
 
 ## 6. 版本兼容
+
+- `sha256` = 信封全文（UTF-8 字节）的 SHA-256，**hex 小写**；客户端可直接用它做完整性 pin。
 
 - 客户端遇到**不认识的魔数**（如未来 LGSRV2）：拒绝该信封，保持现有策略，日志告警——绝不因协议升级失控。
 - 服务端遇客户端上报的 `version` 高于自己：在在线列表标注「客户端更新」，不拒绝服务。

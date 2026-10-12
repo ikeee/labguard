@@ -72,6 +72,8 @@ namespace LabGuard.Core.Server
         private int _failures;
         private DateTime _lastCheckinUtc = DateTime.MinValue;
         private bool _loggedNotReady;
+        private bool _lastApplyFailed;          // 最近一次应用是否失败（上报给教师端做"应用失败"标注）
+        private string _lastErrorCode;          // 稳定错误码（协议 §13.2 命名：LG-xxx-xxx）
 
         public ServerClient(GuardConfig cfg, PairingInfo pairing, RSA publicKey, IServerTransport transport,
             Func<bool> isLocalPaused, Action<EnvelopeData> onApply)
@@ -262,11 +264,15 @@ namespace LabGuard.Core.Server
                 ServerPolicyCache.MarkApplied(env.Seq);
                 ServerPolicyCache.TrySave(text);
                 LastError = null;
+                _lastApplyFailed = false;
+                _lastErrorCode = null;
                 Log.Info(why + "：seq=" + env.Seq + "，paused=" + (env.Paused ? "1（全员暂停）" : "0"));
             }
             catch (Exception ex)
             {
                 LastError = "应用失败：" + ex.Message;
+                _lastApplyFailed = true;
+                _lastErrorCode = "LG-POLICY-APPLY-FAILED";
                 Log.Error("应用服务器策略失败（本机保持原有策略）", ex);
             }
         }
@@ -293,9 +299,18 @@ namespace LabGuard.Core.Server
         {
             string machine = Environment.MachineName ?? "?";
             if (machine.Length > 256) machine = machine.Substring(0, 256);
-            return "{\"machine\":\"" + Escape(machine) + "\",\"version\":\"" + Escape(AppInfo.Version) +
-                   "\",\"seq\":" + _appliedSeq.ToString(CultureInfo.InvariantCulture) +
-                   ",\"paused\":" + (ServerPaused ? "true" : "false") + "}";
+            // 稳定身份 + 已应用序号 + 应用结果（协议 §3）：教师端据此区分"同一台"，并判断 已应用/待应用/应用失败
+            string deviceId = Server.DeviceId.Get();
+            string status = _lastApplyFailed ? "error" : "ok";
+            string json = "{\"machine\":\"" + Escape(machine) + "\",\"version\":\"" + Escape(AppInfo.Version) +
+                          "\",\"deviceId\":\"" + Escape(deviceId) + "\"" +
+                          ",\"seq\":" + _appliedSeq.ToString(CultureInfo.InvariantCulture) +
+                          ",\"appliedSeq\":" + _appliedSeq.ToString(CultureInfo.InvariantCulture) +
+                          ",\"status\":\"" + status + "\"" +
+                          ",\"paused\":" + (ServerPaused ? "true" : "false");
+            if (_lastApplyFailed && !string.IsNullOrEmpty(_lastErrorCode))
+                json += ",\"errorCode\":\"" + Escape(_lastErrorCode) + "\"";
+            return json + "}";
         }
 
         private static ulong ParseSeq(string versionJson)

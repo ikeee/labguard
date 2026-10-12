@@ -55,6 +55,7 @@ namespace LabGuard.SelfTest
             TestServerContract();
             TestServerSync();
             TestServerRuntime();
+            TestDeviceIdentity();
 
             Console.WriteLine();
             Console.WriteLine(_failed == 0 ? "全部通过 ✅" : ("失败 " + _failed + " 项 ❌"));
@@ -1258,6 +1259,86 @@ namespace LabGuard.SelfTest
             {
                 ServerSyncState.Reset();            // 先在临时目录里清干净，别把状态写进真实 %ProgramData%
                 ServerSyncState.DataDir = savedDir;
+                TryDeleteDir(tmp);
+            }
+        }
+
+        /// <summary>
+        /// [13] 设备身份与状态上报（v0.10.4，LG-009 / LG-010）：
+        /// 稳定 DeviceId（生成 / 持久化 / 格式 / 不撞号）+ 心跳体携带 deviceId / appliedSeq / status / errorCode。
+        /// 教师端靠这些字段区分"同一台设备"，并判断 已应用 / 待应用 / 应用失败。
+        /// </summary>
+        private static void TestDeviceIdentity()
+        {
+            Console.WriteLine("[13] 设备身份与状态上报（DeviceId + 已应用序号 + 应用结果）");
+
+            string tmp = Path.Combine(Path.GetTempPath(), "labguard-selftest-devid-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            string savedDir = DeviceId.DataDir;
+            string savedPair = ServerPairing.DataDir;
+            string savedCache = ServerPolicyCache.DataDir;
+            try
+            {
+                Directory.CreateDirectory(tmp);
+                DeviceId.DataDir = tmp;
+
+                string id = DeviceId.Get();
+                Check("① 设备 ID 格式 = LG- + 16 位十六进制", DeviceId.IsValid(id), id);
+                Check("① 第二次读取得到同一个 ID（重启/改名都不变）", DeviceId.Get() == id);
+                Check("① 已落盘 device-id.txt", File.Exists(DeviceId.IdPath));
+                Check("① 拒绝非法格式（长度/前缀/非 hex/空）",
+                    !DeviceId.IsValid("LG-0011") && !DeviceId.IsValid("XX-0011223344556677") &&
+                    !DeviceId.IsValid("LG-00112233445566zz") && !DeviceId.IsValid(null));
+                Check("① 新生成的 ID 不撞号（CSPRNG）", DeviceId.NewId() != DeviceId.NewId());
+
+                var key = new RSACryptoServiceProvider(2048);
+                RSA pub = PublicOnly(key);
+                string pairDir = Path.Combine(tmp, "pair");
+                Directory.CreateDirectory(pairDir);
+                ServerPairing.DataDir = pairDir;
+                ServerPolicyCache.DataDir = pairDir;
+                string pairPath = Path.Combine(pairDir, "labguard-pairing.json");
+                File.WriteAllText(pairPath, BuildPairingJson(key.ToXmlString(false), 8210,
+                    ServerPairing.ComputeFingerprint(key.ToXmlString(false))), new UTF8Encoding(false));
+                PairingInfo pairing = ServerPairing.Import(pairPath);
+
+                var cfg = new GuardConfig();
+                cfg.Server.Enabled = true;
+                var fake = new FakeServer(key);
+                bool failApply = false;
+                var client = new ServerClient(cfg, pairing, pub, fake, () => false, e =>
+                {
+                    if (failApply) throw new InvalidOperationException("模拟应用失败");
+                });
+
+                fake.SetPolicy(3, false, "{\"Enabled\":true,\"StartDelaySeconds\":30}");
+                client.Tick(DateTime.UtcNow);
+                string okBody = client.BuildCheckinJson();
+                Check("② 心跳体带 deviceId", okBody.IndexOf("\"deviceId\":\"" + DeviceId.Get() + "\"", StringComparison.Ordinal) >= 0, okBody);
+                Check("② 心跳体带 appliedSeq（= 已应用序号）",
+                    okBody.Contains("\"appliedSeq\":3") && okBody.Contains("\"seq\":3"));
+                Check("② 应用成功 → status=ok 且不出现 errorCode",
+                    okBody.Contains("\"status\":\"ok\"") && !okBody.Contains("errorCode"));
+
+                failApply = true;
+                fake.SetPolicy(4, false, "{\"Enabled\":true,\"StartDelaySeconds\":60}");
+                client.Tick(DateTime.UtcNow);
+                string errBody = client.BuildCheckinJson();
+                Check("③ 应用失败 → status=error + 稳定错误码",
+                    errBody.Contains("\"status\":\"error\"") && errBody.Contains("LG-POLICY-APPLY-FAILED"), errBody);
+                Check("③ 失败后已应用序号不前进（仍按旧策略跑）", errBody.Contains("\"appliedSeq\":3"));
+
+                failApply = false;
+                fake.SetPolicy(5, false, "{\"Enabled\":true,\"StartDelaySeconds\":90}");
+                client.Tick(DateTime.UtcNow);
+                string okBody2 = client.BuildCheckinJson();
+                Check("④ 恢复后 status 回到 ok、已应用序号前进到 5",
+                    okBody2.Contains("\"status\":\"ok\"") && okBody2.Contains("\"appliedSeq\":5"));
+            }
+            finally
+            {
+                DeviceId.DataDir = savedDir;
+                ServerPairing.DataDir = savedPair;
+                ServerPolicyCache.DataDir = savedCache;
                 TryDeleteDir(tmp);
             }
         }
