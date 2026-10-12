@@ -20,11 +20,23 @@ namespace LabGuard.Service
             {
                 Log.EchoToConsole = true;
                 Log.MinLevel = LogLevel.Debug;
+                // --console --seconds N：跑够 N 秒自动停（自动化验收 / CI 用，避免卡在"按回车"）
+                int secs = 0;
+                int si = Array.IndexOf(args, "--seconds");
+                if (si >= 0 && args.Length > si + 1) int.TryParse(args[si + 1], out secs);
                 using (var svc = new GuardService())
                 {
                     svc.DebugStart();
-                    Console.WriteLine("按回车停止...");
-                    Console.ReadLine();
+                    if (secs > 0)
+                    {
+                        Console.WriteLine("（测试模式）运行 " + secs + " 秒后自动停止…");
+                        System.Threading.Thread.Sleep(secs * 1000);
+                    }
+                    else
+                    {
+                        Console.WriteLine("按回车停止...");
+                        Console.ReadLine();
+                    }
                     svc.DebugStop();
                 }
                 return;

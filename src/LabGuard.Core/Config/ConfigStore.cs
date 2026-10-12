@@ -200,6 +200,9 @@ namespace LabGuard.Core.Config
                     k?.SetValue("CfgData", Encrypt(content), RegistryValueKind.Binary);
                 }
                 ClearTamperFlags();
+                // 服务器管控状态联动：老师把 Server.Enabled 关掉时，必须同时清掉"服务器暂停"态，
+                // 否则机器会停在"服务器暂停"里而服务器已不再管它（永远解不开）——详见 ServerSyncState。
+                Server.ServerSyncState.NoteConfigSaved(cfg);
             }
             catch (Exception ex)
             {

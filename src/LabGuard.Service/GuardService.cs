@@ -9,6 +9,7 @@ using LabGuard.Core;
 using LabGuard.Core.Config;
 using LabGuard.Core.Guards;
 using LabGuard.Core.Logging;
+using LabGuard.Core.Server;
 
 namespace LabGuard.Service
 {
@@ -17,6 +18,9 @@ namespace LabGuard.Service
         private GuardEngine _engine;
         private System.Timers.Timer _agentWatch;
         private GuardConfig _config;
+        // 服务器统一管控（v0.10）：服务以 SYSTEM 身份轮询、验签、落盘，再让两端引擎重新生效
+        private ServerClient _serverClient;
+        private System.Security.Cryptography.RSA _serverKey;
 
         // ------------------------------------------------------------ 防拆：秒级复活 + 被杀计数
         private Thread _fastWatch;
@@ -62,20 +66,129 @@ namespace LabGuard.Service
             // 「暂停」只停**管控策略**，不停**进程守护**：
             // 真机事故（2026-10-08）——老师手势解锁遮罩写入 paused.flag 后，服务既不起引擎也不拉代理，
             // 学生杀掉小助手就再没人管，且托盘没了、老师点不到"启动监控"，只能手工跑设置程序。
-            bool paused = WatchdogGuard.IsPaused();
-            if (paused)
-                Log.Warn("检测到暂停标记（老师已暂停）：不启用管控策略，但进程守护继续（小助手被杀照样拉起）");
+            // 服务器统一管控：先准备状态与配对（可能把"服务器全员暂停"置位，从而影响下面是否启动引擎）
+            PrepareServerSync();
+            bool paused = PauseState.IsPaused;
+            // 监控总开关必须被尊重：真机实测（2026-10-12）发现原来只判"暂停"不判 Enabled，
+            // 于是"全关配置"也会起引擎，随后引擎 Stop() 的"逐项还原"会把老师自己设的系统项
+            // （浏览器策略、usbstor、hosts ACL 等）一并还原掉。Agent 侧本来就判了 Enabled，这里补齐。
+            if (!_config.Enabled)
+                Log.Warn("监控总开关为关（Enabled=false）：不启动管控引擎；进程守护继续（小助手被杀照样拉起）");
+            else if (paused)
+                Log.Warn("当前为暂停状态（" + PauseState.Describe() + "）：不启用管控策略，但进程守护继续（小助手被杀照样拉起）");
             else
                 StartEngine();
             EnsureAgent();
             // 兜底轮询（原有逻辑保留）：万一"句柄等待"那条路走不通（权限/会话异常），还有它
             _agentWatch = new System.Timers.Timer(Math.Max(5, _config.Watchdog.AgentRestartSeconds) * 1000) { AutoReset = true };
-            _agentWatch.Elapsed += (s, e) => { try { EnsureAgent(); } catch { } };
+            _agentWatch.Elapsed += (s, e) =>
+            {
+                try { EnsureAgent(); } catch { }
+                // 顺带把服务器同步状态镜像到状态文件（供设置面板/托盘等其它进程读取；只在变化时落盘）
+                try
+                {
+                    if (_serverClient != null)
+                        ServerSyncState.MarkLink(_serverClient.State, _serverClient.Address,
+                            _serverClient.LastError, _serverClient.LastSuccessUtc);
+                }
+                catch { }
+            };
             _agentWatch.Enabled = true;
             StartFastWatch();
+            _serverClient?.Start();      // 轮询放最后：它一收到新策略就会重启两端引擎（重新生效）
         }
 
         // ------------------------------------------------------------------ 防拆①：进程加锁
+        // ================================================================ 服务器统一管控（v0.10）
+
+        /// <summary>
+        /// 准备服务器同步：读状态、装载配对公钥、用**验签通过的本地缓存**初始化状态
+        /// （机器重启后即使服务器不在网，也继续维持最后一份策略与暂停状态），并创建轮询对象。
+        /// 未启用 / 未配对时什么也不做（= 完全等同单机版）。
+        /// </summary>
+        private void PrepareServerSync()
+        {
+            try
+            {
+                ServerSyncState.Load();
+                if (!(_config.Server != null && _config.Server.Enabled))
+                {
+                    ServerSyncState.NoteConfigSaved(_config);   // 关掉服务器管控 → 清暂停态，别把人锁在暂停里
+                    return;
+                }
+                PairingInfo pairing = ServerPairing.LoadPinned();
+                _serverKey = ServerPairing.LoadPublicKey();
+                if (pairing == null || _serverKey == null)
+                {
+                    ServerSyncState.MarkLink(ServerLinkState.NotPaired, null, "尚未完成配对", DateTime.MinValue);
+                    Log.Warn("已启用服务器统一管控，但本机未完成配对：继续单机管控（配对见部署指南）");
+                    return;
+                }
+                ServerSyncState.InitFromCache(_serverKey);
+                ServerSyncState.MarkLink(ServerLinkState.Polling, pairing.Describe(), null, DateTime.MinValue);
+                _serverClient = new ServerClient(_config, pairing, _serverKey, new HttpServerTransport(),
+                    () => WatchdogGuard.IsPaused(),     // 入参只认"老师本地暂停"（服务器暂停由策略本身表达）
+                    ApplyServerPolicy);
+                Log.Info("服务器统一管控已启用：" + pairing.Describe() + "（轮询 " + _config.Server.PollSeconds +
+                         " 秒；当前 " + PauseState.Describe() + "）");
+            }
+            catch (Exception ex)
+            {
+                Log.Error("装配服务器统一管控失败（继续单机管控）", ex);
+                _serverClient = null;
+            }
+        }
+
+        /// <summary>
+        /// 收到并验签通过的新策略：合并进本机配置 → 落盘 → 让两端引擎重新生效。
+        /// 本机专属字段（口令 / Server 连接配置 / 版本号）由 ServerPolicyApplier 保护，不会被服务器覆盖。
+        /// </summary>
+        private void ApplyServerPolicy(EnvelopeData envelope)
+        {
+            GuardConfig local = ConfigStore.Load();
+            GuardConfig merged = ServerPolicyApplier.Apply(envelope.PolicyJson, local, ConfigStore.Save);
+            _config = merged;
+            ServerSyncState.MarkApplied(envelope, _serverClient != null ? _serverClient.Address : null);
+            RestartEnginesForPolicy(envelope);
+        }
+
+        /// <summary>
+        /// 让新策略真正生效。客户端**没有热重载**（既有机制就是"重启引擎"），所以这里：
+        /// ① 停服务引擎（逐项还原系统）→ 按新策略与暂停状态决定是否重启；
+        /// ② 杀掉小助手并重新拉起（它启动时读新配置）。
+        /// 暂停时只停"管控策略"：进程守护照旧（小助手照旧被拉起，只是以暂停形态运行）。
+        /// </summary>
+        private void RestartEnginesForPolicy(EnvelopeData envelope)
+        {
+            try
+            {
+                if (_engine != null)
+                {
+                    _engine.Stop();
+                    _engine = null;
+                }
+                if (_config.Enabled && !PauseState.IsPaused) StartEngine();
+                else Log.Warn("新策略要求暂停（" + PauseState.Describe() + "）：服务引擎保持停止，进程守护继续");
+
+                // 小助手：杀掉 → 重新拉起（新进程启动时读到的就是刚写下的配置）
+                try
+                {
+                    foreach (Process p in Process.GetProcessesByName("LabGuard.Agent"))
+                    {
+                        try { p.Kill(); } catch { }
+                    }
+                }
+                catch { }
+                EnsureAgent();
+                Log.Info("已按服务器策略重新生效：引擎 " + (_engine != null ? "运行中" : "已停") +
+                         "，小助手已重新拉起（seq=" + envelope.Seq + "）");
+            }
+            catch (Exception ex)
+            {
+                Log.Error("按服务器策略重新生效失败（本机保持原有管控）", ex);
+            }
+        }
+
         /// <summary>
         /// 给服务进程套 DACL。服务本来就以 SYSTEM 运行（标准用户动不了），
         /// 这一步主要防止"以登录用户身份读服务内存/注入"，顺带把非管理员的路彻底堵上。
@@ -357,6 +470,10 @@ namespace LabGuard.Service
         {
             Log.Info("服务停止");
             _stopping = true;
+            try { _serverClient?.Dispose(); } catch { }      // 停止轮询（缓存与状态文件保留，重启后继续）
+            try { _serverKey?.Dispose(); } catch { }
+            _serverClient = null;
+            _serverKey = null;
             try { if (_fastWatch != null && !_fastWatch.Join(2000)) _fastWatch.Abort(); } catch { }
             try { _agentWatch?.Stop(); } catch { }
             try { _engine?.Stop(); } catch (Exception ex) { Log.Error("停止引擎失败", ex); }

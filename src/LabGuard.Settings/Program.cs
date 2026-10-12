@@ -195,6 +195,68 @@ namespace LabGuard.Settings
                 return;
             }
 
+            // 教师机服务器配对：LabGuard.Settings.exe --pair <教师机导出的配对文件.json>
+            // 导入 = 把教师机的服务器公钥 pin 到本机（信任根）+ 打开服务器管控开关。
+            // 之后学生机就会轮询教师机、验签后应用策略（服务以 SYSTEM 身份轮询）。
+            int pairIndex = Array.IndexOf(args ?? new string[0], "--pair");
+            if (pairIndex >= 0)
+            {
+                if (args.Length <= pairIndex + 1)
+                {
+                    Echo("用法：LabGuard.Settings.exe --pair <教师机导出的配对文件.json>");
+                    FlushReport("pair");
+                    return;
+                }
+                try
+                {
+                    LabGuard.Core.Server.PairingInfo info =
+                        LabGuard.Core.Server.ServerPairing.Import(args[pairIndex + 1]);
+                    config.Server.Enabled = true;
+                    config.Server.Address = "";               // 留空 = 用配对文件里的教师机地址
+                    ConfigStore.Save(config);
+                    LabGuard.Core.Server.ServerSyncState.NoteConfigSaved(config);
+                    Echo("已配对教师机服务器：" + info.Describe());
+                    Echo("公钥指纹（应与教师机上显示的一致）：" + info.Fingerprint);
+                    Echo("服务器统一管控已启用（学生机随后会自动连上教师机并按策略执行）。");
+                }
+                catch (Exception ex)
+                {
+                    Echo("配对失败：" + ex.Message);
+                    FlushReport("pair");
+                    Environment.ExitCode = 1;
+                    return;
+                }
+                FlushReport("pair");
+                return;
+            }
+
+            // 解除配对：--unpair（换教师机 / 退役机器）
+            if (Array.IndexOf(args ?? new string[0], "--unpair") >= 0)
+            {
+                LabGuard.Core.Server.ServerPairing.Unpair();
+                LabGuard.Core.Server.ServerPolicyCache.Clear();
+                config.Server.Enabled = false;
+                ConfigStore.Save(config);
+                LabGuard.Core.Server.ServerSyncState.Reset();
+                Echo("已解除服务器配对并关闭服务器管控（本机回到单机版行为）。");
+                FlushReport("unpair");
+                return;
+            }
+
+            // 服务器状态：--server-status（部署逐台核对用）
+            if (Array.IndexOf(args ?? new string[0], "--server-status") >= 0)
+            {
+                LabGuard.Core.Server.ServerSyncState.Load();
+                LabGuard.Core.Server.PairingInfo pinned = LabGuard.Core.Server.ServerPairing.LoadPinned();
+                Echo("已配对          = " + LabGuard.Core.Server.ServerPairing.IsPaired);
+                Echo("教师机          = " + (pinned == null ? "（未配对）" : pinned.Describe() + "  指纹 " + pinned.Fingerprint));
+                Echo("服务器管控开关  = " + config.Server.Enabled +
+                     "  地址：" + (string.IsNullOrEmpty(config.Server.Address) ? "（用配对文件里的地址）" : config.Server.Address));
+                Echo("同步状态        = " + LabGuard.Core.Server.ServerSyncState.Describe());
+                FlushReport("server-status");
+                return;
+            }
+
             // 导出开关目录契约快照：LabGuard.Settings.exe --export-catalog <输出.json>
             // 教师机服务端（labguard-server）用这份快照动态渲染策略面板——客户端增删开关后必须重出，
             // 并把产物同步进服务端仓库 assets\catalog.json（否则教师机面板与真客户端静默漂移）。

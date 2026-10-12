@@ -43,7 +43,30 @@
 - 自检新增 **`[11] 服务器同步` 23 条**：含**真实 HTTP 回环联调**（`/api/version` → `/api/policy` →
   验签 → 应用 → 心跳 POST 到达服务端）。总断言 201 → **224 条**，全绿。
 
-### 下一步（M2c，未完成）：让它真正在本机跑起来
+### M2c 服务端模式接线（本轮，已完成）——第一次真机端到端跑通
+
+- **服务侧持有同步**（`GuardService.PrepareServerSync`）：SYSTEM 身份读配对公钥 → 用**验签通过的本地缓存**
+  初始化状态（重启后服务器不在网也维持最后策略与暂停态）→ 启动轮询；未启用 / 未配对时完全等同单机版。
+- **应用即生效**（客户端此前**没有任何热重载**）：`ApplyServerPolicy` → 合并进本机配置
+  （口令 / 服务器连接配置 / 版本号保持本机值）→ 落盘 → `RestartEnginesForPolicy`：
+  停服务引擎（逐项还原）→ 按新策略与暂停状态决定是否重启 → 杀掉并重新拉起小助手。
+- **暂停来源隔离**：新增 `PauseState` —— 老师本地暂停（`paused.flag`）与服务器全员暂停（信封 `paused=1`）
+  **绝不共用标记**；关闭服务器管控时同步清零暂停态（否则机器停在服务器暂停里、老师永远解不开）。
+- **跨进程状态**：新增 `ServerSyncState`（内存 + `%ProgramData%\LabGuard\server-state.json`，
+  含 enabled / paused / appliedSeq / linkState / 最近同步 / 最近错误）。
+- **界面与部署**：`--pair` / `--unpair` / `--server-status` 三个命令行；服务器在线时设置面板**只读**并提示
+  （离线回退时允许本机改，但明确告知会被服务器策略覆盖；口令栏不受影响）；托盘状态显示服务器同步情况；
+  `install.ps1 -Pair <配对文件>` 安装时直接完成配对。
+- **真机缺陷修复**：服务原来只判"暂停"不判 `Enabled`，导致"全关配置"也会起引擎，
+  而引擎 `Stop()` 的逐项还原会把老师自己设的系统项（浏览器策略、usbstor、hosts ACL）一并还原掉——
+  已按 Agent 侧口径补齐 `Enabled` 判断。
+- 自检新增 `[12] 服务器运行态`（7 条）；`LabGuard.Service.exe --console --seconds N` 支持自动化验收。
+- **真机端到端实测（本机双进程）**：教师机 headless（策略标记 `StartDelaySeconds=4242`）→ 客户端 `--pair`
+  → 服务 `--console` 运行 → 日志出现「收到新策略：seq=1」「已按服务器策略重新生效」，
+  `--show-config` 显示 `4242`，且**口令仍为已设置**（未被服务器策略清空）；
+  随后教师机重启并下发 seq=2（标记 5555）→ 客户端 20 秒内自动追上，`server-state.json` 记录 `appliedSeq=2`。
+
+### 下一步（未完成）：安装包与发布闸门
 
 > 关键前提（本轮摸清）：**客户端目前没有热重载机制**——设置保存后走
 > `SettingsForm.RestartEngineSide()`（`net stop/sc start` 服务 + 杀/重新拉起小助手），

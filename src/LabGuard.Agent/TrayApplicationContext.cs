@@ -7,6 +7,7 @@ using LabGuard.Core;
 using LabGuard.Core.Config;
 using LabGuard.Core.Guards;
 using LabGuard.Core.Logging;
+using LabGuard.Core.Server;
 using LabGuard.Core.UI;
 
 namespace LabGuard.Agent
@@ -28,13 +29,20 @@ namespace LabGuard.Agent
         private readonly string _installDir;
         private readonly bool _dryRun;
         private GuardConfig _config;
-        private bool _paused;
 
         public TrayApplicationContext(GuardConfig config, bool dryRun)
         {
             _config = config;
             _dryRun = dryRun;
             _installDir = GuardEngine.RequireInstallDir();
+            // 服务器统一管控：装载状态（含"服务器全员暂停"）——它参与下面"要不要起引擎"的判断。
+            // 用验签通过的本地缓存做权威来源（状态文件只是快照），所以服务器不在网也维持最后状态。
+            if (_config.Server != null && _config.Server.Enabled)
+            {
+                ServerSyncState.Load();
+                ServerSyncState.InitFromCache(ServerPairing.LoadPublicKey());
+                Log.Info("服务器管控状态：" + ServerSyncState.Describe());
+            }
             _lockScreen = new LockScreenForm(_config.PasswordHash);
             _engine = new GuardEngine(_config);
             ApplyInputLockMode();
@@ -68,8 +76,8 @@ namespace LabGuard.Agent
                 {
                     Log.Error("密码散列为空但本机标记为已安装——配置疑似被篡改，管控继续启用（修复见 docs/05）");
                     LabGuard.Core.Config.ConfigStore.MarkTamperSuspected();
-                    if (_config.Enabled && !WatchdogGuard.IsPaused()) StartEngine();
-                    else { _paused = true; UpdateTrayText(); }
+                    if (_config.Enabled && !PauseState.IsPaused) StartEngine();
+                    else { UpdateTrayText(); }
                 }
                 else
                 {
@@ -79,16 +87,14 @@ namespace LabGuard.Agent
             }
             else if (Core.Interop.SafeModeDetector.ShouldSkipEnforcement(_config.SafeMode.RunInSafeMode))
             {
-                _paused = true;
                 Balloon("LabGuard", "当前是安全模式：按设置不加载管控。你可以在这种模式下修复或彻底卸载。");
             }
-            else if (_config.Enabled && !WatchdogGuard.IsPaused())
+            else if (_config.Enabled && !PauseState.IsPaused)
             {
                 StartEngine();
             }
             else
             {
-                _paused = true;
                 UpdateTrayText();
             }
         }
@@ -172,14 +178,12 @@ namespace LabGuard.Agent
                 // 后路：安全模式下即使手动点"启动监控"也不加载（老师可在安全模式里修/卸载完再回正常模式）
                 if (Core.Interop.SafeModeDetector.ShouldSkipEnforcement(_config.SafeMode.RunInSafeMode))
                 {
-                    _paused = true;
                     UpdateTrayText();
                     Balloon("LabGuard", "当前是安全模式：不启用监控（如需在安全模式也管控，请在设置里打开\"安全模式也运行\"）。");
                     return;
                 }
                 WatchdogGuard.MarkPaused(false);
                 _engine.Start(this, _installDir, _dryRun, EngineRole.Full);
-                _paused = false;
                 UpdateTrayText();
                 Balloon("LabGuard", "监控已启动" + (_dryRun ? "（干跑模式：只记录，不修改系统）" : ""));
             }
@@ -194,7 +198,6 @@ namespace LabGuard.Agent
         {
             if (!Verify("暂停监控")) return;
             _engine.Stop(markPaused: true);
-            _paused = true;
             UpdateTrayText();
             Balloon("LabGuard", "已暂停监控：现在可以使用U盘、下载文件、运行被拦截的软件。" +
                                     (_config.ResumeAfterMinutes > 0
@@ -246,9 +249,13 @@ namespace LabGuard.Agent
 
         private void ShowStatus()
         {
-            string state = _paused ? "已暂停" : (_engine.IsRunning ? "监控中" : "未启动");
+            string state = PauseState.IsPaused ? PauseState.Describe() : (_engine.IsRunning ? "监控中" : "未启动");
+            string server = "";
+            if (_config.Server != null && _config.Server.Enabled)
+                server = Environment.NewLine + "服务器统一管控：" + ServerSyncState.Describe();
             string body = "小助手工作状态：" + state + Environment.NewLine +
-                          (_dryRun ? "运行模式：干跑（不修改系统）" : "运行模式：正常") + Environment.NewLine + Environment.NewLine +
+                          (_dryRun ? "运行模式：干跑（不修改系统）" : "运行模式：正常") + server +
+                          Environment.NewLine + Environment.NewLine +
                           _engine.StatusSnapshot;
             MessageBox.Show(body, "学生LabGuard", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -272,7 +279,7 @@ namespace LabGuard.Agent
         private void UpdateTrayText()
         {
             if (_tray == null) return;
-            string state = _paused ? "已暂停" : (_engine.IsRunning ? "监控中" : "未启动");
+            string state = PauseState.IsPaused ? "已暂停" : (_engine.IsRunning ? "监控中" : "未启动");
             _tray.Text = ("LabGuard - " + state).Substring(0, Math.Min(60, 8 + state.Length));
         }
 
@@ -342,7 +349,6 @@ namespace LabGuard.Agent
         private void PauseBecauseTeacherUnlock(string channel)
         {
             _engine.Stop(markPaused: true);
-            _paused = true;
             UpdateTrayText();
             Balloon("LabGuard", "已按老师" + channel + "解除断网遮罩，监控已暂停。" +
                 "恢复办法：托盘「启动监控」，或运行 LabGuard.Service.exe --resume（进程守护不受影响，仍会一直看住小助手）。");

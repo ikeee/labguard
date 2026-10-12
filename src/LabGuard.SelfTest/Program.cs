@@ -54,6 +54,7 @@ namespace LabGuard.SelfTest
             TestEngineDryRun();
             TestServerContract();
             TestServerSync();
+            TestServerRuntime();
 
             Console.WriteLine();
             Console.WriteLine(_failed == 0 ? "全部通过 ✅" : ("失败 " + _failed + " 项 ❌"));
@@ -1190,6 +1191,74 @@ namespace LabGuard.SelfTest
             {
                 if (Fail) throw new IOException("模拟断网");
                 Checkins.Add(body);
+            }
+        }
+
+        /// <summary>
+        /// [12] 服务器运行态（v0.10 M2c）：ServerSyncState / PauseState 的跨进程语义与"两个暂停来源互不污染"。
+        /// 关键不变量：老师把服务器管控**关掉**时必须同时清掉"服务器暂停"态 ——
+        /// 否则机器会停在"服务器暂停"里而服务器已不再管它，老师永远解不开。
+        /// </summary>
+        private static void TestServerRuntime()
+        {
+            Console.WriteLine("[12] 服务器运行态（状态快照 / 暂停来源隔离）");
+
+            string tmp = Path.Combine(Path.GetTempPath(),
+                "labguard-selftest-runtime-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            string savedDir = ServerSyncState.DataDir;
+            try
+            {
+                Directory.CreateDirectory(tmp);
+                ServerSyncState.DataDir = tmp;
+
+                ServerSyncState.Reset();
+                Check("① 未启用：Enabled=false 且永不处于「暂停」（防止关掉服务器后解不开）",
+                    !ServerSyncState.Enabled && !ServerSyncState.ServerPaused &&
+                    ServerSyncState.Describe().IndexOf("单机模式", StringComparison.Ordinal) >= 0);
+
+                var on = new GuardConfig();
+                on.Server.Enabled = true;
+                ServerSyncState.NoteConfigSaved(on);
+                Check("② 配置保存后状态跟随（Enabled=true）", ServerSyncState.Enabled);
+
+                var key = new RSACryptoServiceProvider(2048);
+                EnvelopeData env = PolicyEnvelope.Parse(
+                    PolicyEnvelope.Build(9, DateTime.UtcNow, true, "{\"Enabled\":true}", key), PublicOnly(key));
+                Check("   （夹具有效：paused=1 信封验签通过）", env.Verified && env.Paused, env.Error);
+                ServerSyncState.MarkApplied(env, "10.28.1.20:8210");
+                Check("③ 应用后：seq / 暂停 / 地址都进了状态",
+                    ServerSyncState.AppliedSeq == 9 && ServerSyncState.ServerPaused &&
+                    ServerSyncState.Address == "10.28.1.20:8210");
+                Check("③ 服务器暂停 → 统一口径 PauseState.IsPaused 必为真（与老师是否暂停无关）",
+                    PauseState.ServerPaused && PauseState.IsPaused);
+                Check("③ 状态摘要可读（含 seq 与暂停字样）",
+                    ServerSyncState.Describe().IndexOf("9") >= 0 &&
+                    ServerSyncState.Describe().IndexOf("暂停", StringComparison.Ordinal) >= 0,
+                    ServerSyncState.Describe());
+
+                // 跨进程视角：另一个"进程"（这里用重新 Load 模拟）能读到同一份状态
+                ServerSyncState.MarkApplied(env, "10.28.1.20:8210");
+                ServerSyncState.Load();
+                Check("④ 状态文件可被其它进程/重启读回（含启用、暂停、seq）",
+                    ServerSyncState.Enabled && ServerSyncState.ServerPaused && ServerSyncState.AppliedSeq == 9 &&
+                    File.Exists(ServerSyncState.StatePath) &&
+                    File.ReadAllText(ServerSyncState.StatePath).IndexOf("\"schemaVersion\":1", StringComparison.Ordinal) >= 0,
+                    ServerSyncState.Describe());
+
+                ServerSyncState.MarkApplied(env, "10.28.1.20:8210");
+                var off = new GuardConfig();
+                off.Server.Enabled = false;
+                ServerSyncState.NoteConfigSaved(off);
+                Check("⑤ 关键：老师关掉服务器管控 → 暂停态同时清零（否则永远解不开）",
+                    !ServerSyncState.Enabled && !ServerSyncState.ServerPaused && !PauseState.ServerPaused);
+                Check("⑤ 文件里也同步写下了 enabled=false",
+                    File.ReadAllText(ServerSyncState.StatePath).IndexOf("\"enabled\":false", StringComparison.Ordinal) >= 0);
+            }
+            finally
+            {
+                ServerSyncState.Reset();            // 先在临时目录里清干净，别把状态写进真实 %ProgramData%
+                ServerSyncState.DataDir = savedDir;
+                TryDeleteDir(tmp);
             }
         }
 

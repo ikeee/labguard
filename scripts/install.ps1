@@ -22,6 +22,7 @@ param(
     [string]$OldPassword,         # 该机已设过密码时，用它通过校验后改密码
     [string]$ConfigJson,          # 无人值守：套用预设配置（presets\*.json）
     [string]$Dns,                 # 无人值守：集中 DNS（教师机 AdGuard IP，可逗号分隔多个）
+    [string]$Pair,                # 服务器版：教师机导出的配对文件（导入即开启"服务器统一管控"）
     [switch]$DryRun               # 只打印将要做什么，不实际改动（给老师预演用）
 )
 
@@ -169,6 +170,24 @@ if ($Password -or $ConfigJson -or $Dns) {
 }
 
 # ---------------------------------------------------------------- 6. 快捷方式
+
+# ---------------------------------------------------------------- 5.6 服务器配对（可选）
+if ($Pair) {
+    $settingsExe2 = Join-Path $InstallDir 'LabGuard.Settings.exe'
+    if (-not (Test-Path -LiteralPath $Pair)) {
+        Write-Host "  配对文件不存在：$Pair" -ForegroundColor Red
+        throw '配对失败：找不到教师机导出的配对文件。'
+    }
+    if ($DryRun) {
+        Write-Host "  · 将导入配对文件：$Pair（pin 教师机公钥 + 打开服务器统一管控）"
+    } else {
+        & $settingsExe2 --pair $Pair
+        if ($LASTEXITCODE -ne 0) { throw '配对失败（详见上面的输出）。' }
+        Write-Host '  已配对教师机服务器：本机策略将由教师机统一下发（打印机房内变化 ≤10 秒生效）。' -ForegroundColor Green
+        Write-Host '  核对：运行 LabGuard.Settings.exe --server-status 可随时查看配对与同步状态。' -ForegroundColor DarkGray
+    }
+}
+
 if (-not $SkipShortcuts) {
     if ($DryRun) { Write-Host '  · 将创建桌面与开始菜单快捷方式' }
     else {

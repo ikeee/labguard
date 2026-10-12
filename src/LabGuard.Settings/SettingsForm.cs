@@ -8,6 +8,8 @@ using System.Windows.Forms;
 using LabGuard.Core.Config;
 using LabGuard.Core.Guards;
 using LabGuard.Core.Interop;
+using LabGuard.Core.Logging;
+using LabGuard.Core.Server;
 using LabGuard.Core.UI;
 
 namespace LabGuard.Settings
@@ -71,7 +73,53 @@ namespace LabGuard.Settings
             Controls.Add(_panel);
             Controls.Add(bottom);
             Controls.Add(pwdBox);
+            // 服务器统一管控（v0.10）：服务器在线时本机面板只读 + 顶部说明（协议 §4）
+            ApplyServerManagedBanner(btnReset);
             CancelButton = btnCancel;
+        }
+
+        /// <summary>
+        /// 服务器统一管控提示（跨进程读服务写下的状态快照；权威暂停状态以验签信封为准，见 ServerSyncState）。
+        /// 在线 → 面板只读（改不了，改也白改：服务器策略下次下发就覆盖）；离线回退 → 允许本机改但明确告知会被覆盖。
+        /// 口令一栏不受影响（口令属于本机专属字段，服务器策略不会覆盖它）。
+        /// </summary>
+        private void ApplyServerManagedBanner(Button btnReset)
+        {
+            try
+            {
+                ServerSyncState.Load();
+                if (!ServerSyncState.Enabled) return;
+                bool online = string.Equals(ServerSyncState.LinkState, ServerLinkState.Polling.ToString(),
+                    StringComparison.OrdinalIgnoreCase);
+                string text = online
+                    ? "当前由服务器统一管控（" + ServerSyncState.Describe() + "）：本机设置面板只读。" +
+                      "要改策略请到教师机的【LabGuard 服务端 · 策略面板】。"
+                    : "已启用服务器统一管控，但当前联系不上教师机（" + ServerSyncState.Describe() + "）：" +
+                      "本机改动只在本机生效，教师机一恢复，服务器策略就会覆盖它。";
+                if (ServerSyncState.ServerPaused)
+                    text += "  ⚠ 服务器正在【全员暂停】：本机无法解除，需教师在教师机点「全员恢复」。";
+
+                var banner = new Label
+                {
+                    Dock = DockStyle.Top,
+                    Height = 46,
+                    BackColor = online ? Color.FromArgb(255, 244, 214) : Color.FromArgb(235, 244, 255),
+                    ForeColor = Color.FromArgb(110, 60, 0),
+                    TextAlign = ContentAlignment.MiddleLeft,
+                    Padding = new Padding(12, 0, 12, 0),
+                    Text = text,
+                };
+                Controls.Add(banner);
+                if (online)
+                {
+                    _panel.Enabled = false;
+                    if (btnReset != null) btnReset.Enabled = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("显示服务器管控提示失败：" + ex.Message);
+            }
         }
 
         // ------------------------------------------------------------------ 截图（文档/人工核对用）
