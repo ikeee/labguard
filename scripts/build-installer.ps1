@@ -54,6 +54,9 @@ $src = Join-Path $root 'src\LabGuard.Installer\bin\Release\net48\LabGuard.Instal
 $dst = Join-Path $release 'LabGuard-一键安装程序.exe'
 Copy-Item -LiteralPath $src -Destination $dst -Force
 $size = [math]::Round((Get-Item $dst).Length / 1MB, 2)
+# 发布资产用带版本号的名字（与历史 Release 一致：LabGuard-Setup-vX.exe）
+$versioned = Join-Path $release ("LabGuard-Setup-v" + $Version + ".exe")
+Copy-Item -LiteralPath $src -Destination $versioned -Force
 
 # 顺带打一个完整发布包（dist + presets + docs + README + 安装程序），文件名带版本
 $zip = Join-Path $release ("labguard-v" + $Version + ".zip")
@@ -77,6 +80,7 @@ if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
 [System.IO.Directory]::Delete($staging, $true)
 Write-Host ''
 Write-Host ("✅ 已生成：" + $dst + "（" + $size + " MB，单文件、内置全部程序与壁纸）") -ForegroundColor Green
+Write-Host ("✅ 已生成：" + $versioned + "（同一文件，带版本号，发布资产用）") -ForegroundColor Green
 Write-Host ("✅ 已生成：" + $zip + "（" + [math]::Round((Get-Item $zip).Length / 1MB, 2) + " MB，完整发布包）") -ForegroundColor Green
 Write-Host '   双击即可安装：欢迎 → 安装位置 → 密码 → 90+ 项功能开关 → 安装'
 Write-Host '   无人值守：LabGuard-一键安装程序.exe --silent --password xxx [--config 预设.json] [--dns 教师机IP]'

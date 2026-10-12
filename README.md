@@ -1,10 +1,12 @@
 # LabGuard
 
-**当前版本：v0.07（单机版最终版，版本已冻结）**（2026-10-09，[全部版本](https://github.com/ikeee/labguard/releases)）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
+**当前版本：v0.10.0（服务器版第一版）**（2026-10-12，[全部版本](https://github.com/ikeee/labguard/releases)）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
 
-> **路线图**：下一版本 **v0.10** 为服务器版（v0.08 / v0.09 永久跳过）——教师机部署服务端统一下发策略，
-> 学生机收到即生效；服务器不可达时自动回退单机模式。服务端位于独立仓库
-> [labguard-server](https://github.com/ikeee/labguard-server)（建设中），本仓库承载客户端部分。
+> **v0.10.0 = 服务器版**（v0.08 / v0.09 永久跳过，作为「单机时代 → 服务器时代」的分界线）：
+> 教师机部署 [labguard-server](https://github.com/ikeee/labguard-server) 统一下发策略，学生机**收到即生效**（默认 5 秒轮询，≤10 秒到位）；
+> 策略带 RSA 签名 + 单调序号（防伪服务器 / 防篡改 / 防重放）；**服务器不可达时自动沿用最后一份策略**，机房不失控。
+> 服务端不在网、或本机没配对时，行为与 v0.07 单机版**完全一致**（单机能力全部保留）。
+> **部署步骤（教师机 + 学生机）见 [labguard-server/docs/deployment-guide.md](https://github.com/ikeee/labguard-server/blob/main/docs/deployment-guide.md)。**
 
 > **English TL;DR** — LabGuard is an open-source, self-healing policy guard for Windows PCs in school computer labs
 > (.NET Framework 4.8). It protects the classroom-management client (TopDomain / Red Spider / Ruijie cloud class)
