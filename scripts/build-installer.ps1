@@ -6,10 +6,19 @@
   用法：powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
 #>
 [CmdletBinding()]
-param([switch]$SkipSolutionBuild, [string]$Version = '0.01')
+param([switch]$SkipSolutionBuild, [string]$Version = '0.01', [switch]$AllowPublishedVersion)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+
+# 版本闸门：产物版本号必须新于已发布版本（每重打一次安装包，先把版本号 +1 并同步 -Version）
+try {
+    $existing = gh release view "v$Version" --repo ikeee/labguard --json tagName --jq .tagName 2>$null
+    if ($existing) {
+        Write-Host ("版本闸门：v" + $Version + " 已经发布过了！请先把版本号 +1 再打包。") -ForegroundColor Red
+        if (-not $AllowPublishedVersion) { exit 7 }
+    }
+} catch { }
 $payload = Join-Path $root 'src\LabGuard.Installer\payload'
 $release = Join-Path $root 'release'
 

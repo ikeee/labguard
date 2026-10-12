@@ -65,6 +65,7 @@ namespace LabGuard.Installer
 
         public InstallerForm()
         {
+            Icon = LabGuard.Core.AppIcon.Get();      // 安装向导也要显式设图标，否则是 .NET 默认图标
             Text = LabGuard.Core.AppInfo.ProductName + " v" + LabGuard.Core.AppInfo.Version + " · 一键安装向导";
             Font = new Font("微软雅黑", 9F);
             ClientSize = new Size(900, 660);

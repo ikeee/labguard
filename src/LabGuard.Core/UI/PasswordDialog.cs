@@ -23,6 +23,7 @@ namespace LabGuard.Core.UI
 
         public PasswordDialog(string title, string prompt, string passwordHash, bool confirmNew = false)
         {
+            Icon = AppIcon.Get();
             Text = title;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;

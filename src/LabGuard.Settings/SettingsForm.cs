@@ -29,6 +29,7 @@ namespace LabGuard.Settings
         public SettingsForm(GuardConfig config)
         {
             _config = config;
+            Icon = LabGuard.Core.AppIcon.Get();      // 窗体左上角/任务栏也用程序图标（红底头像）
             // 标题统一走 PasswordGate：保证和密码框的标题来自同一个来源，
             // 自检 [5.9] 断言「两者不同」时才不会各改各的又撞回一起去
             Text = LabGuard.Core.UI.PasswordGate.SettingsWindowTitle();

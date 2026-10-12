@@ -22,6 +22,7 @@ namespace LabGuard.Core.UI
 
         public ClassroomPickDialog(string current)
         {
+            Icon = AppIcon.Get();
             Text = "识别课堂软件学生端";
             Font = new Font("微软雅黑", 9F);
             ClientSize = new Size(720, 380);
