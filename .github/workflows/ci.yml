@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build-and-selftest:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      # 敏感文件检查：本机运行产物 / 凭据 / 配对数据一律不得入库
+      - name: 敏感文件检查
+        shell: pwsh
+        run: |
+          $bad = git ls-files | Where-Object { $_ -match '(?i)(^|/)(config\.json|paused\.flag|server-public\.key|server-policy\.cache|.*pairing.*\.json)$|^dist/|^release/|\.pfx$|\.snk$' }
+          if ($bad) {
+            Write-Host "禁止提交的文件被 Git 跟踪："
+            $bad | ForEach-Object { Write-Host "  $_" }
+            exit 1
+          }
+          Write-Host "敏感文件检查通过"
+
+      - name: 构建 + 自检（一条命令）
+        shell: pwsh
+        run: ./scripts/build.ps1 -SelfTest
