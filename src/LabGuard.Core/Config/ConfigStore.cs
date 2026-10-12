@@ -294,6 +294,8 @@ namespace LabGuard.Core.Config
             if (c.Site == null) c.Site = new SiteSettings();
             if (c.RegistryAcl == null) c.RegistryAcl = new RegistryAclSettings();
             if (c.Watchdog == null) c.Watchdog = new WatchdogSettings();
+            if (c.AntiTamper == null) c.AntiTamper = new AntiTamperSettings();
+            if (c.Server == null) c.Server = new ServerSettings();
         }
 
         private static byte[] Encrypt(string plain)

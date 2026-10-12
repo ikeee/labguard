@@ -418,6 +418,31 @@ namespace LabGuard.Core.Settings
                 "只有当你确实想在暂停时彻底停掉一切（例如装机维护）才关。",
                 c => c.AntiTamper.KeepAliveWhenPaused, (c, v) => c.AntiTamper.KeepAliveWhenPaused = (bool)v));
 
+            // ============================================================ 15 服务器统一管控
+            list.Add(Bool("15、服务器统一管控", "Server.Enabled", "启用教师机服务器统一管控",
+                "在教师机（另一台电脑）上集中改策略、全部学生机自动生效（默认 5 秒轮询，≤10 秒内到位）。\n" +
+                "前提：先导入教师机导出的「配对文件」（把它的公钥 pin 到本机）——策略带 RSA 签名，\n" +
+                "伪服务器、改策略、重放旧策略都过不了验签。\n" +
+                "关掉（或没配对）= 完全等同单机版：本机设置面板说了算，服务器影响不到这台机器。",
+                c => c.Server.Enabled, (c, v) => c.Server.Enabled = (bool)v));
+            list.Add(Text("15、服务器统一管控", "Server.Address", "服务器地址（留空 = 用配对文件里的地址）",
+                "格式 主机:端口，例如 10.28.1.20:8210。留空 = 用配对文件里教师机的地址（推荐）。\n" +
+                "只有当教师机换了网段、或想指定备用地址时才需要手填。",
+                c => c.Server.Address, (c, v) => c.Server.Address = (string)v));
+            list.Add(Number("15、服务器统一管控", "Server.PollSeconds", "轮询间隔（秒）",
+                "每隔多久问一次教师机「策略变了吗」。默认 5 秒 —— 改完策略全部学生机 ≤10 秒生效。\n" +
+                "心跳很轻（先比 seq/sha，没变就不拉全文），几十台机器也不会压垮教师机。",
+                1, 60, c => c.Server.PollSeconds, (c, v) => c.Server.PollSeconds = (int)v));
+            list.Add(Number("15、服务器统一管控", "Server.CheckinSeconds", "心跳上报间隔（秒）",
+                "每隔多久向教师机报一次「我在线 / 我的策略版本 / 是否暂停」。\n" +
+                "教师机的「在线学生机」列表按它聚合，默认 60 秒；超过这个间隔就算离线。",
+                10, 600, c => c.Server.CheckinSeconds, (c, v) => c.Server.CheckinSeconds = (int)v));
+            list.Add(Number("15、服务器统一管控", "Server.FailuresBeforeFallback", "连续失败几次后回退单机（次）",
+                "连不上教师机（网线拔了 / 教师机没开）达到这个次数后，本机回退单机模式：\n" +
+                "沿用最后一份生效策略继续管控，不解除管控、不锁屏。教师机一恢复就自动回到服务器管控。\n" +
+                "默认 3 次（5 秒轮询下约 15 秒）；别设太大，否则网络抖动时会一直卡在「连不上」的状态。",
+                1, 10, c => c.Server.FailuresBeforeFallback, (c, v) => c.Server.FailuresBeforeFallback = (int)v));
+
             return list;
         }
 

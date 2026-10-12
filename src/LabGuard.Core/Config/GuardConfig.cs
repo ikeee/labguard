@@ -42,6 +42,7 @@ namespace LabGuard.Core.Config
         public RegistryAclSettings RegistryAcl { get; set; } = new RegistryAclSettings();
         public WatchdogSettings Watchdog { get; set; } = new WatchdogSettings();
         public AntiTamperSettings AntiTamper { get; set; } = new AntiTamperSettings();
+        public ServerSettings Server { get; set; } = new ServerSettings();
 
         public IEnumerable<KeyValuePair<string, bool>> Snapshot()
         {
@@ -404,5 +405,29 @@ namespace LabGuard.Core.Config
         /// 暂停的语义应当是"停止管控策略"，不是"允许别人杀掉我的进程"。默认开。
         /// </summary>
         public bool KeepAliveWhenPaused { get; set; } = true;
+    }
+
+    /// <summary>
+    /// 教师机服务器统一管控（LabGuard 服务器版 v0.10 起）。
+    ///
+    /// 设计前提：**服务器是增强，不是前置条件**。
+    /// <see cref="Enabled"/> 关闭或没做过配对 = 完全等同单机版（v0.07）行为；
+    /// 服务器不可达 = 沿用最后一份生效策略（本地缓存），机房不失控。
+    ///
+    /// 策略来源优先级：**验签通过的服务器信封 &gt; 本地 config.json**。
+    /// 服务器在线时，本地设置面板只读提示「当前由服务器管控」。
+    /// </summary>
+    public class ServerSettings
+    {
+        /// <summary>启用服务器统一管控。默认关：不配对、不开 = 纯单机版。</summary>
+        public bool Enabled { get; set; } = false;
+        /// <summary>服务器地址（host:port）。留空 = 用配对文件里的地址（教师机 IP + 8210）。</summary>
+        public string Address { get; set; } = "";
+        /// <summary>轮询间隔（秒）。默认 5：老师改完策略，全部学生机 ≤10 秒内生效。</summary>
+        public int PollSeconds { get; set; } = 5;
+        /// <summary>心跳上报间隔（秒）。服务端据此聚合"在线学生机"列表，默认 60。</summary>
+        public int CheckinSeconds { get; set; } = 60;
+        /// <summary>连续失败多少次后回退单机模式（沿用最后一份生效策略），默认 3。</summary>
+        public int FailuresBeforeFallback { get; set; } = 3;
     }
 }

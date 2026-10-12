@@ -195,6 +195,22 @@ namespace LabGuard.Settings
                 return;
             }
 
+            // 导出开关目录契约快照：LabGuard.Settings.exe --export-catalog <输出.json>
+            // 教师机服务端（labguard-server）用这份快照动态渲染策略面板——客户端增删开关后必须重出，
+            // 并把产物同步进服务端仓库 assets\catalog.json（否则教师机面板与真客户端静默漂移）。
+            int catalogIndex = Array.IndexOf(args ?? new string[0], "--export-catalog");
+            if (catalogIndex >= 0)
+            {
+                string outPath = args.Length > catalogIndex + 1
+                    ? args[catalogIndex + 1]
+                    : System.IO.Path.Combine(System.IO.Path.GetTempPath(), "labguard-catalog.json");
+                string doc = LabGuard.Core.Settings.CatalogExport.Build();
+                System.IO.File.WriteAllText(outPath, doc, new System.Text.UTF8Encoding(false));
+                Console.WriteLine("已导出开关目录快照（" + LabGuard.Core.Settings.SettingsCatalog.All().Count +
+                    " 项）-> " + outPath);
+                return;
+            }
+
             // 导出预设：LabGuard.Settings.exe --export-preset <主机房|一体机机房> <输出.json>
             int presetIndex = Array.IndexOf(args ?? new string[0], "--export-preset");
             if (presetIndex >= 0 && args.Length > presetIndex + 2)
