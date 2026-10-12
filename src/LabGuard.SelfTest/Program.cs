@@ -11,8 +11,10 @@ using LabGuard.Core.Interop;
 using LabGuard.Core.Logging;
 using LabGuard.Core.Server;
 using LabGuard.Core.Settings;
+using System.Net;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Threading;
 
 namespace LabGuard.SelfTest
 {
@@ -51,6 +53,7 @@ namespace LabGuard.SelfTest
             TestNicRoles();
             TestEngineDryRun();
             TestServerContract();
+            TestServerSync();
 
             Console.WriteLine();
             Console.WriteLine(_failed == 0 ? "全部通过 ✅" : ("失败 " + _failed + " 项 ❌"));
@@ -893,6 +896,301 @@ namespace LabGuard.SelfTest
             Check("③ 新增「服务器统一管控」5 项已进快照",
                 CountOf(doc, "\"section\":\"15、服务器统一管控\"") == 5,
                 CountOf(doc, "\"section\":\"15、服务器统一管控\"") + " 项");
+        }
+
+        /// <summary>
+        /// [11] 服务器同步（轮询 / 应用 / 回退 / 暂停优先级，v0.10 M2b）：
+        /// ① 未启用 → Disabled；② 未配对 → NotPaired；③ 服务端未配置策略（503）不算失败；
+        /// ④ seq 前进才拉全文并应用；⑤ 同 seq 不重复应用；⑥ **旧 seq 信封（重放）必须拒绝**；
+        /// ⑦ 篡改的信封拒绝；⑧ 全员暂停信封生效；⑨ 连续失败回退单机、恢复后自动回到轮询；
+        /// ⑩ **老师本地暂停优先**（暂存 pending，恢复后自动应用）；⑪ 缓存重启可用、被篡改则忽略；
+        /// ⑫ 合并保留本机专属字段（口令 / 服务器配置 / 版本）；⑬ 真实 HTTP 回环线格式联调。
+        /// 全程临时目录 + 假通道，不发真实网络请求（⑬ 除外，只在 127.0.0.1 回环）。
+        /// </summary>
+        private static void TestServerSync()
+        {
+            Console.WriteLine("[11] 服务器同步（轮询 / 应用 / 回退 / 暂停优先级）");
+
+            var key = new RSACryptoServiceProvider(2048);
+            RSA pub = PublicOnly(key);
+            string tmp = Path.Combine(Path.GetTempPath(), "labguard-selftest-sync-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            string savedPairDir = ServerPairing.DataDir;
+            string savedCacheDir = ServerPolicyCache.DataDir;
+            try
+            {
+                Directory.CreateDirectory(tmp);
+                ServerPairing.DataDir = tmp;
+                ServerPolicyCache.DataDir = tmp;
+                ServerPolicyCache.Clear();
+
+                string pairPath = Path.Combine(tmp, "labguard-pairing.json");
+                File.WriteAllText(pairPath, BuildPairingJson(key.ToXmlString(false), 8210,
+                    ServerPairing.ComputeFingerprint(key.ToXmlString(false))), new UTF8Encoding(false));
+                PairingInfo pairing = ServerPairing.Import(pairPath);
+
+                var cfg = new GuardConfig();
+                cfg.Server.Enabled = true;
+                cfg.Server.Address = "127.0.0.1:8210";
+                cfg.Server.PollSeconds = 1;
+                cfg.Server.CheckinSeconds = 10;
+                cfg.Server.FailuresBeforeFallback = 3;
+
+                var fake = new FakeServer(key);
+                var applied = new List<EnvelopeData>();
+                bool localPaused = false;
+                var client = new ServerClient(cfg, pairing, pub, fake, () => localPaused, e => applied.Add(e));
+                var t0 = new DateTime(2026, 10, 12, 1, 0, 0, DateTimeKind.Utc);
+
+                var offCfg = new GuardConfig();
+                offCfg.Server.Enabled = false;
+                var offClient = new ServerClient(offCfg, pairing, pub, fake, () => false, e => { });
+                offClient.Tick(t0);
+                Check("① 未启用服务器管控 → Disabled（完全等同单机版）",
+                    offClient.State == ServerLinkState.Disabled);
+
+                var noPair = new ServerClient(cfg, null, null, fake, () => false, e => { });
+                noPair.Tick(t0);
+                Check("② 启用但未配对 → NotPaired（继续单机管控）",
+                    noPair.State == ServerLinkState.NotPaired);
+
+                fake.NotReady = true;
+                client.Tick(t0);
+                Check("③ 服务端未配置策略（503）→ 不算失败，保持轮询",
+                    client.State == ServerLinkState.Polling && client.ConsecutiveFailures == 0);
+                fake.NotReady = false;
+
+                fake.SetPolicy(1, false, "{\"Enabled\":true,\"StartDelaySeconds\":30}");
+                client.Tick(t0);
+                Check("④ 收到 seq=1 → 应用一次", applied.Count == 1 && client.AppliedSeq == 1,
+                    "applied=" + applied.Count + " seq=" + client.AppliedSeq);
+                Check("④ 应用后立刻上报心跳（含机器名 / 版本 / seq）",
+                    fake.Checkins.Count == 1 && fake.LastCheckin.Contains("\"seq\":1") &&
+                    fake.LastCheckin.Contains(Environment.MachineName));
+                Check("④ 策略已落盘缓存（重启后不等服务器也能继续管控）",
+                    File.Exists(ServerPolicyCache.CachePath));
+
+                client.Tick(t0.AddSeconds(1));
+                Check("⑤ seq 未变 → 不重复应用、也不重复拉全文",
+                    applied.Count == 1 && fake.PolicyFetchCount == 1,
+                    "applied=" + applied.Count + " fetch=" + fake.PolicyFetchCount);
+
+                fake.SetPolicy(2, false, "{\"Enabled\":true,\"StartDelaySeconds\":45}");
+                client.Tick(t0.AddSeconds(2));
+                Check("⑥ seq 前进到 2 → 再应用一次", applied.Count == 2 && client.AppliedSeq == 2 &&
+                    applied[1].Seq == 2);
+
+                // 重放攻击：探测说 seq=3（骗客户端去拉），但信封本身是旧的 seq=1（签名仍合法）
+                fake.SetPolicy(1, false, "{\"Enabled\":true,\"StartDelaySeconds\":30}");
+                fake.SetProbeSeq(3);
+                client.Tick(t0.AddSeconds(3));
+                Check("⑦ 旧 seq 信封（合法签名 + 重放）→ 拒绝，不覆盖已生效策略",
+                    applied.Count == 2 && client.AppliedSeq == 2 &&
+                    client.LastError != null && client.LastError.IndexOf("未前进", StringComparison.Ordinal) >= 0);
+
+                // 篡改：改一个字符，签名就对不上
+                fake.SetPolicy(5, false, "{\"Enabled\":true,\"StartDelaySeconds\":60}");
+                fake.PolicyText = fake.PolicyText.Replace("\"Enabled\":true", "\"Enabled\":false");
+                client.Tick(t0.AddSeconds(4));
+                Check("⑧ 篡改信封 → 验签失败并拒绝", applied.Count == 2 && client.AppliedSeq == 2 &&
+                    client.LastError != null && client.LastError.IndexOf("签名", StringComparison.Ordinal) >= 0);
+
+                fake.SetPolicy(6, true, "{\"Enabled\":true,\"StartDelaySeconds\":60}");
+                client.Tick(t0.AddSeconds(5));
+                Check("⑨ 全员暂停信封（paused=1）生效", applied.Count == 3 && client.ServerPaused);
+
+                fake.Fail = true;
+                client.Tick(t0.AddSeconds(6));
+                client.Tick(t0.AddSeconds(7));
+                Check("⑩ 连续失败 2 次：仍在轮询（未达阈值 3）",
+                    client.State == ServerLinkState.Polling && client.ConsecutiveFailures == 2);
+                client.Tick(t0.AddSeconds(8));
+                Check("⑩ 连续失败 3 次 → 回退单机（沿用最后生效策略）",
+                    client.State == ServerLinkState.FallbackSingle && client.AppliedSeq == 6 &&
+                    client.Current != null);
+                fake.Fail = false;
+                client.Tick(t0.AddSeconds(9));
+                Check("⑩ 服务器恢复 → 自动回到轮询，失败计数归零",
+                    client.State == ServerLinkState.Polling && client.ConsecutiveFailures == 0);
+
+                localPaused = true;
+                fake.SetPolicy(7, false, "{\"Enabled\":true,\"StartDelaySeconds\":90}");
+                client.Tick(t0.AddSeconds(10));
+                Check("⑪ 老师本地暂停中 → 服务器策略暂存不打扰（pending）",
+                    applied.Count == 3 && client.HasPending && client.AppliedSeq == 6);
+                localPaused = false;
+                client.Tick(t0.AddSeconds(11));
+                Check("⑪ 老师恢复后 → 自动应用暂存策略（暂停优先，不丢）",
+                    applied.Count == 4 && client.AppliedSeq == 7 && !client.HasPending);
+
+                EnvelopeData cached;
+                bool cacheOk = ServerPolicyCache.TryLoad(pub, out cached);
+                Check("⑫ 缓存可重新装载（重启后 seq 基线 = 7）",
+                    cacheOk && cached.Seq == 7 && ServerPolicyCache.LastSeq == 7);
+                string cachedText = File.ReadAllText(ServerPolicyCache.CachePath, Encoding.UTF8);
+                File.WriteAllText(ServerPolicyCache.CachePath,
+                    cachedText.Replace("LGSRV1|7|", "LGSRV1|99|"), new UTF8Encoding(false));
+                Check("⑫ 缓存被篡改 → 验签拒绝并按无缓存处理（seq 基线归零）",
+                    !ServerPolicyCache.TryLoad(pub, out cached) && ServerPolicyCache.LastSeq == 0);
+
+                // ---- 合并语义：本机专属字段必须活下来
+                var local = new GuardConfig { PasswordHash = "pbkdf2-sha256$100000$salt$hash" };
+                local.Server.Enabled = true;
+                local.Server.Address = "10.28.1.20:8210";
+                local.Network.DnsServers = new List<string> { "10.28.1.10" };
+                string serverPolicy = ConfigStore.Serialize(new GuardConfig());   // 服务器默认策略（无口令、Server=false）
+                GuardConfig merged = ServerPolicyApplier.Merge(local, serverPolicy);
+                Check("⑬ 服务器策略覆盖普通开关（本机 DNS 被服务器值覆盖）",
+                    merged.Network.DnsServers.Count == 0);
+                Check("⑬ 本机口令不被服务器策略清空（否则门禁失效）",
+                    merged.PasswordHash == "pbkdf2-sha256$100000$salt$hash");
+                Check("⑬ 本机服务器连接配置不被服务器策略关掉（防自锁）",
+                    merged.Server.Enabled && merged.Server.Address == "10.28.1.20:8210");
+
+                // ---- 真实 HTTP 回环：协议线格式端到端（真 transport ↔ 真 HttpListener）
+                RunLoopbackSyncTest(key, pub, pairing);
+            }
+            finally
+            {
+                ServerPairing.DataDir = savedPairDir;
+                ServerPolicyCache.DataDir = savedCacheDir;
+                TryDeleteDir(tmp);
+            }
+        }
+
+        /// <summary>真实 HTTP 回环联调：本机 HttpListener 扮演教师机，用真 transport 走一遍 version → policy → checkin。</summary>
+        private static void RunLoopbackSyncTest(RSA key, RSA pub, PairingInfo pairing)
+        {
+            int port = FreeTcpPort();
+            if (port <= 0) { Check("⑭ 回环联调（找不到空闲端口，已跳过）", true); return; }
+            var listener = new HttpListener();
+            listener.Prefixes.Add("http://127.0.0.1:" + port + "/");
+            try { listener.Start(); }
+            catch (Exception ex)
+            {
+                Check("⑭ 回环联调（HttpListener 起不来，已跳过）", true, ex.Message);
+                return;
+            }
+
+            string envelope = PolicyEnvelope.Build(21, new DateTime(2026, 10, 12, 2, 0, 0, DateTimeKind.Utc),
+                false, "{\"Enabled\":true,\"StartDelaySeconds\":7}", key);
+            var checkinBodies = new List<string>();
+            var serverThread = new Thread(() =>
+            {
+                while (listener.IsListening)
+                {
+                    HttpListenerContext ctx;
+                    try { ctx = listener.GetContext(); } catch { break; }
+                    try
+                    {
+                        string path = ctx.Request.Url.AbsolutePath;
+                        string body;
+                        if (path == "/api/version") body = "{\"seq\":21,\"sha256\":\"x\",\"paused\":false}";
+                        else if (path == "/api/policy") body = envelope;
+                        else if (path == "/api/checkin")
+                        {
+                            using (var sr = new StreamReader(ctx.Request.InputStream, Encoding.UTF8))
+                                lock (checkinBodies) checkinBodies.Add(sr.ReadToEnd());
+                            body = "{\"ok\":true}";
+                        }
+                        else { ctx.Response.StatusCode = 404; ctx.Response.Close(); continue; }
+                        byte[] bytes = Encoding.UTF8.GetBytes(body);
+                        ctx.Response.StatusCode = 200;
+                        ctx.Response.ContentType = "application/json";
+                        ctx.Response.ContentLength64 = bytes.Length;
+                        ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                        ctx.Response.Close();
+                    }
+                    catch { try { ctx.Response.Abort(); } catch { } }
+                }
+            }) { IsBackground = true, Name = "selftest-fake-server" };
+            serverThread.Start();
+
+            try
+            {
+                var httpCfg = new GuardConfig();
+                httpCfg.Server.Enabled = true;
+                httpCfg.Server.Address = "127.0.0.1:" + port;
+                httpCfg.Server.CheckinSeconds = 10;
+                var httpApplied = new List<EnvelopeData>();
+                var httpClient = new ServerClient(httpCfg, pairing, pub, new HttpServerTransport(),
+                    () => false, e => httpApplied.Add(e));
+                httpClient.Tick(DateTime.UtcNow);
+                Check("⑭ 真实 HTTP：/api/version → /api/policy → 验签 → 应用",
+                    httpApplied.Count == 1 && httpApplied[0].Seq == 21, "applied=" + httpApplied.Count);
+
+                for (int i = 0; i < 20 && CheckinCount(checkinBodies) == 0; i++) Thread.Sleep(50);
+                Check("⑭ 真实 HTTP：心跳 POST 到达服务端且含机器名",
+                    CheckinCount(checkinBodies) == 1 && LastCheckin(checkinBodies).Contains(Environment.MachineName));
+                httpClient.Stop();
+            }
+            finally
+            {
+                try { listener.Stop(); } catch { }
+                try { listener.Close(); } catch { }
+            }
+        }
+
+        private static int CheckinCount(List<string> bodies) { lock (bodies) return bodies.Count; }
+        private static string LastCheckin(List<string> bodies)
+        {
+            lock (bodies) return bodies.Count == 0 ? "" : bodies[bodies.Count - 1];
+        }
+
+        private static int FreeTcpPort()
+        {
+            try
+            {
+                var l = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+                l.Start();
+                int port = ((IPEndPoint)l.LocalEndpoint).Port;
+                l.Stop();
+                return port;
+            }
+            catch { return -1; }
+        }
+
+        /// <summary>自检用的假通道：可切"断网 / 未就绪"，可指定探测 seq 与信封正文不一致（伪造/重放场景）。</summary>
+        private sealed class FakeServer : IServerTransport
+        {
+            private readonly RSA _key;
+            public int VersionSeq;
+            public bool NotReady;
+            public bool Fail;
+            public string PolicyText;
+            public int PolicyFetchCount;
+            public readonly List<string> Checkins = new List<string>();
+
+            public FakeServer(RSA key) { _key = key; }
+            public string LastCheckin { get { return Checkins.Count == 0 ? "" : Checkins[Checkins.Count - 1]; } }
+
+            public void SetPolicy(ulong seq, bool paused, string policyJson)
+            {
+                PolicyText = PolicyEnvelope.Build(seq, new DateTime(2026, 10, 12, 1, 0, 0, DateTimeKind.Utc),
+                    paused, policyJson, _key);
+                VersionSeq = (int)seq;
+            }
+
+            public void SetProbeSeq(ulong seq) { VersionSeq = (int)seq; }
+
+            public string GetVersion(string address)
+            {
+                if (Fail) throw new IOException("模拟断网");
+                if (NotReady) return null;
+                return "{\"seq\":" + VersionSeq + ",\"sha256\":\"x\",\"paused\":false}";
+            }
+
+            public string GetPolicy(string address)
+            {
+                if (Fail) throw new IOException("模拟断网");
+                PolicyFetchCount++;
+                return PolicyText;
+            }
+
+            public void Checkin(string address, string body)
+            {
+                if (Fail) throw new IOException("模拟断网");
+                Checkins.Add(body);
+            }
         }
 
         /// <summary>公钥副本（只有公钥部分——模拟学生机上 pin 住的那把）。</summary>
