@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Windows.Forms;
 using LabGuard.Core.Config;
@@ -46,7 +47,7 @@ namespace LabGuard.Installer
         /// <summary>
         /// LabGuard· 一键安装程序
         /// 双击 = 图形向导（欢迎 → 安装位置 → 密码 → 80 项开关 → 安装）
-        /// 无人值守 = LabGuard.Installer.exe --silent --password xxx [--install-dir 路径] [--config 预设.json] [--dns IP] [--no-start]
+        /// 无人值守 = LabGuard.Installer.exe --silent --password xxx [--install-dir 路径] [--config 预设.json] [--dns IP] [--pair 配对文件.json] [--no-start]
         /// 预演     = 追加 --dry-run（只打印步骤，不改系统）
         /// </summary>
         [STAThread]
@@ -155,6 +156,36 @@ namespace LabGuard.Installer
             try
             {
                 engine.Install();
+                // 服务器版：装完可直接导入教师机的配对文件（--pair <教师机导出的 pairing.json>），
+                // 一次性完成"安装 + 配对"，机房批量部署不用再逐台点设置面板。
+                string pairFile = Value(args, "--pair");
+                if (!string.IsNullOrEmpty(pairFile))
+                {
+                    if (dryRun)
+                    {
+                        Console.WriteLine("（预演）将导入配对文件：" + pairFile);
+                    }
+                    else
+                    {
+                        string settingsExe = Path.Combine(engine.InstallDir, "LabGuard.Settings.exe");
+                        if (!File.Exists(pairFile)) { Console.Error.WriteLine("配对失败：找不到配对文件 " + pairFile); Environment.ExitCode = 1; }
+                        else if (!File.Exists(settingsExe)) { Console.Error.WriteLine("配对失败：找不到 " + settingsExe); Environment.ExitCode = 1; }
+                        else
+                        {
+                            var psi = new ProcessStartInfo(settingsExe, "--pair \"" + pairFile + "\"")
+                            {
+                                UseShellExecute = false,
+                                WorkingDirectory = engine.InstallDir,
+                            };
+                            using (var p = Process.Start(psi))
+                            {
+                                p.WaitForExit(60000);
+                                if (p.ExitCode == 0) Console.WriteLine("已导入配对文件：本机将接受教师机统一下发的策略（≤10 秒内生效）。");
+                                else { Console.Error.WriteLine("配对失败（退出码 " + p.ExitCode + "）"); Environment.ExitCode = 1; }
+                            }
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -170,7 +201,7 @@ namespace LabGuard.Installer
   双击运行            = 图形向导：欢迎 → 安装位置 → 密码 → 功能开关(90+项) → 安装
 
   无人值守示例：
-    LabGuard.Installer.exe --silent --password 你的密码123 --install-dir C:\LabGuard ^
+    LabGuard.Installer.exe --silent --password 你的密码123 --install-dir C:\LabGuard --pair D:\pairing.json ^
         --config ""presets\主机房-普通PC.json"" --dns 192.168.1.10 --no-start
 
   参数：
@@ -179,6 +210,7 @@ namespace LabGuard.Installer
             --install-dir <路径>  安装目录（默认 C:\Program Files\LabGuard）
     --disguise-dir      安装目录名不显眼（自动生成，如 C:\Program Files\f738291；未指定 --install-dir 时生效）
     --password <密码>     小助手密码（6 位及以上字母数字）
+  --pair <文件>         服务器版：导入教师机导出的配对文件（装完即接受统一管控）
     --config <json>     套用预设配置（presets\ 目录下自带两份）
     --dns <IP>          集中 DNS（可选；填了才做 DNS 锁定）
     --classroom <exe>   课堂软件学生端路径（留空则自动识别，识别不到可在设置里填）

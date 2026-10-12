@@ -215,9 +215,13 @@ namespace LabGuard.Settings
                     config.Server.Address = "";               // 留空 = 用配对文件里的教师机地址
                     ConfigStore.Save(config);
                     LabGuard.Core.Server.ServerSyncState.NoteConfigSaved(config);
+                    // 关键：导入配对 = 本机交给教师机统管，必须清掉本机的「老师暂停」标记。
+                    // 否则安装器留下的暂停标记会按"暂停优先"把服务器策略一直挡在 pending（真机实测：
+                    // 全新静默安装的机器永远收不到策略，教师端在线列表也是空的）。
+                    LabGuard.Core.Guards.WatchdogGuard.MarkPaused(false);
                     Echo("已配对教师机服务器：" + info.Describe());
                     Echo("公钥指纹（应与教师机上显示的一致）：" + info.Fingerprint);
-                    Echo("服务器统一管控已启用（学生机随后会自动连上教师机并按策略执行）。");
+                    Echo("已清除本机「暂停监控」标记——本机现在由教师机统管（学生机随后自动连上教师机并按策略执行）。");
                 }
                 catch (Exception ex)
                 {

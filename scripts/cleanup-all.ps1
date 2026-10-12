@@ -192,7 +192,10 @@ if (-not $KeepFiles) {
 }
 if (Test-Path $mirror) { Run-Step ('删除系统级备份副本 ' + $mirror) { [System.IO.Directory]::Delete($mirror, $true) } }
 Run-Step '清理配置/暂停标记' {
-    foreach ($f in @('config.json','paused.flag','files.sha256','wallpaper-active.jpg')) {
+    # 服务器统一管控（v0.10）留下的本机文件也必须清掉：pin 住的教师机公钥 + 已应用策略缓存 + 同步状态。
+    # 不清的话，重装后可能还"认得"旧教师机（公钥还在），而策略缓存会让它以为已经应用过某个 seq。
+    foreach ($f in @('config.json','paused.flag','files.sha256','wallpaper-active.jpg',
+                       'server-public.key','server-pairing.json','server-policy.cache','server-state.json')) {
         $p = Join-Path $dataDir $f
         if (Test-Path $p) { Remove-Item -LiteralPath $p -Force }
     }
