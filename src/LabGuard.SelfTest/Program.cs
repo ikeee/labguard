@@ -9,6 +9,10 @@ using LabGuard.Core.Data;
 using LabGuard.Core.Guards;
 using LabGuard.Core.Interop;
 using LabGuard.Core.Logging;
+using LabGuard.Core.Server;
+using LabGuard.Core.Settings;
+using System.Security.AccessControl;
+using System.Security.Cryptography;
 
 namespace LabGuard.SelfTest
 {
@@ -46,6 +50,7 @@ namespace LabGuard.SelfTest
             TestSettingsCoverage();
             TestNicRoles();
             TestEngineDryRun();
+            TestServerContract();
 
             Console.WriteLine();
             Console.WriteLine(_failed == 0 ? "全部通过 ✅" : ("失败 " + _failed + " 项 ❌"));
@@ -763,6 +768,186 @@ namespace LabGuard.SelfTest
             var audit = SystemActions.AuditTrail;
             Console.WriteLine("      干跑期间记录的系统动作（应只有读取/空操作）：" + audit.Count + " 条");
             foreach (string a in audit.Take(8)) Console.WriteLine("        " + a);
+        }
+
+        /// <summary>
+        /// [10] 服务器统一管控契约（双仓契约的客户端侧，v0.10）：
+        /// ① 信封验签——伪服务器 / 改策略 / 改 seq 重放 / 未知魔数 / 畸形信封 全部必须拒绝；
+        /// ② 配对与公钥 pin——指纹不符 / 格式不认识 / 塞的是私钥 全部必须拒绝，公钥被替换后 fail-closed；
+        /// ③ 开关目录快照导出——字段数与界面开关一一对应、默认策略覆盖全部 path、同一输入逐字节稳定。
+        /// 全程只在临时目录操作，不修改系统、不碰真实 %ProgramData%\LabGuard。
+        /// </summary>
+        private static void TestServerContract()
+        {
+            Console.WriteLine("[10] 服务器统一管控契约（信封 / 配对 / 目录导出）");
+
+            // 这封信的 policyJson 里故意放上 '|' 与转义反斜杠：信封解析不许 naive Split('|')
+            const string policy =
+                "{\"Enabled\":true,\"Note\":\"含竖线|和路径D:\\\\x\",\"Network\":{\"DnsServers\":[\"10.28.1.10\"]}}";
+            var key = new RSACryptoServiceProvider(2048);
+            var other = new RSACryptoServiceProvider(2048);
+            RSA pub = PublicOnly(key);
+            RSA pubOther = PublicOnly(other);
+            var issuedAt = new DateTime(2026, 10, 12, 3, 4, 5, DateTimeKind.Utc);
+
+            string good = PolicyEnvelope.Build(7, issuedAt, false, policy, key);
+            EnvelopeData ok = PolicyEnvelope.Parse(good, pub);
+            Check("① 合法信封验签通过", ok.Verified, ok.Error);
+            Check("① seq / issuedAt / paused 解析正确",
+                ok.Seq == 7 && !ok.Paused && ok.IssuedAtUtc.ToUniversalTime() == issuedAt,
+                "seq=" + ok.Seq + " paused=" + ok.Paused);
+            Check("① policyJson 含 '|' 与转义反斜杠也能原样取回", ok.PolicyJson == policy);
+
+            EnvelopeData pausedEnv = PolicyEnvelope.Parse(
+                PolicyEnvelope.Build(8, DateTime.UtcNow, true, policy, key), pub);
+            Check("① 全员暂停信封 paused=true", pausedEnv.Verified && pausedEnv.Paused, pausedEnv.Error);
+
+            Check("① 改策略内容 → 验签拒绝",
+                !PolicyEnvelope.Parse(good.Replace("\"Enabled\":true", "\"Enabled\":false"), pub).Verified);
+            Check("① 改 seq 想重放/回滚 → 验签拒绝",
+                !PolicyEnvelope.Parse(good.Replace("LGSRV1|7|", "LGSRV1|9|"), pub).Verified);
+            Check("① 换一把公钥（伪服务器）→ 验签拒绝", !PolicyEnvelope.Parse(good, pubOther).Verified);
+
+            EnvelopeData unknownMagic = PolicyEnvelope.Parse(good.Replace("LGSRV1|", "LGSRV2|"), pub);
+            Check("① 未知魔数 LGSRV2 → 拒绝并提示协议升级", !unknownMagic.Verified &&
+                unknownMagic.Error != null && unknownMagic.Error.IndexOf("魔数", StringComparison.Ordinal) >= 0);
+
+            EnvelopeData badPaused = PolicyEnvelope.Parse(good.Replace("|0|", "|2|"), pub);
+            Check("① paused 段只能 0/1（填 2 → 拒绝）", !badPaused.Verified && badPaused.Error != null);
+            Check("① 签名段不是 base64 → 拒绝",
+                !PolicyEnvelope.Parse(good.Substring(0, good.LastIndexOf('|') + 1) + "!!!", pub).Verified);
+            Check("① 空信封 / 未配对（无公钥）→ 拒绝",
+                !PolicyEnvelope.Parse("", pub).Verified && !PolicyEnvelope.Parse(good, null).Verified);
+            Check("① 防回滚：只有 seq 严格更大才接受",
+                PolicyEnvelope.IsNewer(3, 2) && !PolicyEnvelope.IsNewer(2, 2) && !PolicyEnvelope.IsNewer(1, 2));
+
+            // ---- 配对与公钥 pin（临时目录）
+            string tmp = Path.Combine(Path.GetTempPath(),
+                "labguard-selftest-pair-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            string savedDir = ServerPairing.DataDir;
+            try
+            {
+                Directory.CreateDirectory(tmp);
+                ServerPairing.DataDir = tmp;
+                string pubXml = key.ToXmlString(false);
+                string fingerprint = ServerPairing.ComputeFingerprint(pubXml);
+                Check("② 指纹 = 16 位小写 hex", fingerprint.Length == 16 &&
+                    fingerprint.All(ch => (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')), fingerprint);
+
+                string pairPath = Path.Combine(tmp, "labguard-pairing.json");
+                File.WriteAllText(pairPath, BuildPairingJson(pubXml, 8210, fingerprint), new UTF8Encoding(false));
+                PairingInfo info = ServerPairing.Import(pairPath);
+                Check("② 配对导入成功且地址可读", info != null && info.Port == 8210 &&
+                    info.Describe() == "10.28.1.20:8210", info == null ? null : info.Describe());
+                Check("② 配对后 IsPaired = true，指纹可复核",
+                    ServerPairing.IsPaired && ServerPairing.LoadPinned().Fingerprint == fingerprint);
+                RSA pinned = ServerPairing.LoadPublicKey();
+                Check("② pin 住的公钥能验签（端到端：配对 → 验信封）",
+                    pinned != null && PolicyEnvelope.Parse(good, pinned).Verified);
+
+                string badFp = Path.Combine(tmp, "bad-fingerprint.json");
+                File.WriteAllText(badFp, BuildPairingJson(pubXml, 8210, "deadbeefdeadbeef"), new UTF8Encoding(false));
+                Check("② 指纹与公钥不符 → 拒绝导入",
+                    Throws(() => ServerPairing.Import(badFp) != null));
+
+                string badFormat = Path.Combine(tmp, "bad-format.json");
+                File.WriteAllText(badFormat,
+                    BuildPairingJson(pubXml, 8210, fingerprint).Replace("labguard-pairing/1", "labguard-pairing/2"),
+                    new UTF8Encoding(false));
+                Check("② 配对文件格式不认识 → 拒绝导入",
+                    Throws(() => ServerPairing.Import(badFormat) != null));
+
+                string privPath = Path.Combine(tmp, "private.json");
+                string privXml = key.ToXmlString(true);
+                File.WriteAllText(privPath,
+                    BuildPairingJson(privXml, 8210, ServerPairing.ComputeFingerprint(privXml)),
+                    new UTF8Encoding(false));
+                Check("② 配对文件里是私钥 → 拒绝导入（绝不把私钥装到学生机）",
+                    Throws(() => ServerPairing.Import(privPath) != null));
+
+                File.WriteAllText(ServerPairing.PublicKeyPath, pubOther.ToXmlString(false), new UTF8Encoding(false));
+                Check("② 公钥被替换 → 按未配对处理（fail-closed，继续单机管控）",
+                    !ServerPairing.IsPaired && ServerPairing.LoadPublicKey() == null);
+            }
+            finally
+            {
+                ServerPairing.DataDir = savedDir;
+                TryDeleteDir(tmp);
+            }
+
+            // ---- 开关目录契约快照（教师机服务端面板按它渲染）
+            int fieldCount = SettingsCatalog.All().Count;
+            var stamp = new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc);
+            string doc = CatalogExport.Build("0.10-test", stamp);
+            Check("③ 快照含 format / clientVersion / fieldCount / defaultPolicy",
+                doc.IndexOf("\"format\":\"labguard-catalog/1\"", StringComparison.Ordinal) >= 0 &&
+                doc.IndexOf("\"clientVersion\":\"0.10-test\"", StringComparison.Ordinal) >= 0 &&
+                doc.IndexOf("\"fieldCount\":" + fieldCount, StringComparison.Ordinal) >= 0 &&
+                doc.IndexOf("\"defaultPolicy\":\"{", StringComparison.Ordinal) > 0, fieldCount + " 项");
+            Check("③ 快照字段对象数 == 界面开关数",
+                CountOf(doc, "\"path\":") == fieldCount, CountOf(doc, "\"path\":") + " vs " + fieldCount);
+            List<string> coverage = CatalogExport.ValidateCoverage();
+            Check("③ 每个开关 path 都能在默认策略里解析到（服务端面板不会出现空控件）",
+                coverage.Count == 0, coverage.Count == 0 ? null : string.Join("；", coverage.Take(3)));
+            Check("③ 同一输入两次导出逐字节一致（可做 diff 审查）", CatalogExport.Build("0.10-test", stamp) == doc);
+            Check("③ 新增「服务器统一管控」5 项已进快照",
+                CountOf(doc, "\"section\":\"15、服务器统一管控\"") == 5,
+                CountOf(doc, "\"section\":\"15、服务器统一管控\"") + " 项");
+        }
+
+        /// <summary>公钥副本（只有公钥部分——模拟学生机上 pin 住的那把）。</summary>
+        private static RSA PublicOnly(RSA key)
+        {
+            var pub = new RSACryptoServiceProvider();
+            pub.FromXmlString(key.ToXmlString(false));
+            return pub;
+        }
+
+        /// <summary>构造一份与教师机服务端 PairingFile 同形的配对文件（公钥 XML 里没有需要转义的字符）。</summary>
+        private static string BuildPairingJson(string publicKeyXml, int port, string fingerprint)
+        {
+            return "{\"format\":\"labguard-pairing/1\",\"serverHost\":\"TEACHER-PC\"," +
+                   "\"addresses\":[\"10.28.1.20\",\"192.168.1.20\"],\"port\":" + port + "," +
+                   "\"publicKeyXml\":\"" + publicKeyXml + "\"," +
+                   "\"fingerprint\":\"" + fingerprint + "\"," +
+                   "\"generatedAt\":\"2026-10-12T00:00:00.0000000Z\"}";
+        }
+
+        private static bool Throws(Func<bool> action)
+        {
+            try { action(); return false; }
+            catch { return true; }
+        }
+
+        private static int CountOf(string haystack, string needle)
+        {
+            int n = 0, i = 0;
+            while ((i = haystack.IndexOf(needle, i, StringComparison.Ordinal)) >= 0) { n++; i += needle.Length; }
+            return n;
+        }
+
+        /// <summary>清理自检临时目录：先恢复权限继承（Import 会把 ACL 收紧）再删，删不掉就留着（在 %TEMP% 里，无害）。</summary>
+        private static void TryDeleteDir(string dir)
+        {
+            try
+            {
+                foreach (string f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+                {
+                    try
+                    {
+                        var fi = new FileInfo(f);
+                        FileSecurity sec = fi.GetAccessControl();
+                        sec.SetAccessRuleProtection(false, true);
+                        fi.SetAccessControl(sec);
+                    }
+                    catch { }
+                }
+                Directory.Delete(dir, true);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("      （临时目录清理失败，可忽略：" + dir + " :: " + ex.Message + "）");
+            }
         }
     }
 }
