@@ -30,9 +30,9 @@ namespace LabGuard.Core.Server
     public interface IServerTransport
     {
         /// <summary>GET /api/version：返回响应体；服务端未就绪（503）返回 null；连接失败抛异常。</summary>
-        string GetVersion(string address);
+        string GetVersion(string address, string query);
         /// <summary>GET /api/policy：返回信封原文。失败抛异常。</summary>
-        string GetPolicy(string address);
+        string GetPolicy(string address, string query);
         /// <summary>POST /api/checkin：心跳上报。失败抛异常。</summary>
         void Checkin(string address, string body);
     }
@@ -99,6 +99,20 @@ namespace LabGuard.Core.Server
         public string LastError { get; private set; }
         public DateTime LastSuccessUtc { get; private set; }
 
+        /// <summary>
+        /// 身份查询串（v0.11 分组）：`?device=LG-…&machine=PC-01`。
+        /// 服务端据此把设备解析到某个组（deviceId 精确匹配优先，机器名兜底）；解析不到 → 默认策略。
+        /// 不带它也能跑（旧服务端忽略未知参数、旧客户端则拿默认策略）。
+        /// </summary>
+        public string IdentityQuery
+        {
+            get
+            {
+                string machine = Environment.MachineName ?? "?";
+                if (machine.Length > 64) machine = machine.Substring(0, 64);
+                return "?device=" + Uri.EscapeDataString(DeviceId.Get()) + "&machine=" + Uri.EscapeDataString(machine);
+            }
+        }
         /// <summary>服务器地址：配置优先，留空则用配对文件里的（教师机 IP:端口）。</summary>
         public string Address
         {
@@ -189,7 +203,7 @@ namespace LabGuard.Core.Server
 
             try
             {
-                string versionJson = _transport.GetVersion(Address);
+                string versionJson = _transport.GetVersion(Address, IdentityQuery);
                 if (versionJson == null)
                 {
                     // 服务端在，但还没配置过策略（503）：不算失败，等老师保存策略
@@ -214,7 +228,7 @@ namespace LabGuard.Core.Server
                     return;
                 }
 
-                string policyText = _transport.GetPolicy(Address);
+                string policyText = _transport.GetPolicy(Address, IdentityQuery);
                 EnvelopeData env = PolicyEnvelope.Parse(policyText, _publicKey);
                 if (!env.Verified)
                 {
@@ -351,8 +365,8 @@ namespace LabGuard.Core.Server
     {
         public int TimeoutMs { get; set; } = 3000;
 
-        public string GetVersion(string address) { return Get(address, "/api/version"); }
-        public string GetPolicy(string address) { return Get(address, "/api/policy"); }
+        public string GetVersion(string address, string query) { return Get(address, "/api/version" + query); }
+        public string GetPolicy(string address, string query) { return Get(address, "/api/policy" + query); }
 
         public void Checkin(string address, string body)
         {

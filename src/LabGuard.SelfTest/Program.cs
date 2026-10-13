@@ -1014,6 +1014,9 @@ namespace LabGuard.SelfTest
                 Check("⑩ 服务器恢复 → 自动回到轮询，失败计数归零",
                     client.State == ServerLinkState.Polling && client.ConsecutiveFailures == 0);
 
+                Check("⑮ v0.11 请求带身份查询串（服务端据此解析分组）",
+                    !string.IsNullOrEmpty(fake.LastQuery) && fake.LastQuery.Contains("device=LG-") &&
+                    fake.LastQuery.Contains("machine=") && fake.LastQuery.StartsWith("?"), fake.LastQuery);
                 localPaused = true;
                 fake.SetPolicy(7, false, "{\"Enabled\":true,\"StartDelaySeconds\":90}");
                 client.Tick(t0.AddSeconds(10));
@@ -1160,6 +1163,7 @@ namespace LabGuard.SelfTest
             public bool Fail;
             public string PolicyText;
             public int PolicyFetchCount;
+            public string LastQuery;                     // v0.11：服务端据此解析分组（device/machine）
             public readonly List<string> Checkins = new List<string>();
 
             public FakeServer(RSA key) { _key = key; }
@@ -1174,14 +1178,15 @@ namespace LabGuard.SelfTest
 
             public void SetProbeSeq(ulong seq) { VersionSeq = (int)seq; }
 
-            public string GetVersion(string address)
+            public string GetVersion(string address, string query)
             {
                 if (Fail) throw new IOException("模拟断网");
                 if (NotReady) return null;
+                LastQuery = query;
                 return "{\"seq\":" + VersionSeq + ",\"sha256\":\"x\",\"paused\":false}";
             }
 
-            public string GetPolicy(string address)
+            public string GetPolicy(string address, string query)
             {
                 if (Fail) throw new IOException("模拟断网");
                 PolicyFetchCount++;
