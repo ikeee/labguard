@@ -1,5 +1,17 @@
 # 更新记录
 
+## v0.12.0（2026-10-13 · 版本号随教师端 lockstep）
+
+- 客户端**代码无功能变化**：教师端 v0.12 的「临时课堂状态层」（上课/严管/考试一键切 + 到点自动回基础策略）
+  **完全在服务端合成**——临时覆盖在发布时间就被合成进"有效策略"，照旧签名 + 排 seq + 客户端确认下发。
+  所以客户端**零新字段、零改动**，仍然只做一件事：seq 变大就拉全文、验签、应用。
+- 本次仅把版本号与教师端同步到 0.12.0 并重打产物（两仓同版本号是本项目约定，
+  同 v0.10.3 先例：版本对齐、功能不变）。
+- 学生机侧真正干活的是既有开关：`ProcessBlock.BlockGames / BlockVirtualDesktop / BlockTaskManager`、
+  `Shell.HideTaskView / BlockWindowsKey / DisableCmd`、`Network.EnforceDns / BlockDoh`、
+  `Usb.AllowStorage`、`AntiTamper.*`、`Classroom.*`——都在 v0.11.x 里已经实现并有自检覆盖。
+- 自检仍 **245 条**全绿。
+
 ## v0.11.1（2026-10-13 · 沙箱（便携）模式加固 + `--machine-name` 修正）
 
 **动机**：教师端要搭"一台机器跑 1 个真教师端 + N 个真学生端"的端到端测试台，客户端需要
