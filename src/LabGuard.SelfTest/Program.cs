@@ -56,6 +56,7 @@ namespace LabGuard.SelfTest
             TestServerSync();
             TestServerRuntime();
             TestDeviceIdentity();
+            TestSessionEscape();
 
             Console.WriteLine();
             Console.WriteLine(_failed == 0 ? "全部通过 ✅" : ("失败 " + _failed + " 项 ❌"));
@@ -1401,6 +1402,61 @@ namespace LabGuard.SelfTest
             {
                 Console.WriteLine("      （临时目录清理失败，可忽略：" + dir + " :: " + ex.Message + "）");
             }
+        }
+
+        /// <summary>
+        /// [14] 防会话逃逸（v0.13）：「学生换用户 / 开第二个会话」是"多开桌面脱离管制"里最硬的一条路。
+        /// 这里只验**不碰真机**的部分：配置能存能读、开关目录里有位、引擎两个角色都挂上了它、
+        /// 干跑时会写的那两个注册表位置与取值正确、以及"没有原值备份时停止绝不动系统"。
+        /// </summary>
+        private static void TestSessionEscape()
+        {
+            Console.WriteLine("[14] 防会话逃逸（换用户 / 新会话）");
+
+            var cfg = new GuardConfig();
+            Check("14.1 默认值：启用本组 + 禁快速切换用户；**远程桌面默认关**（怕把老师自己的远程排障也挡了）",
+                cfg.Session.Enabled && cfg.Session.BlockFastUserSwitch && !cfg.Session.DenyRemoteDesktop);
+
+            var round = ConfigStore.Deserialize(ConfigStore.Serialize(cfg));
+            round.Session.DenyRemoteDesktop = true;
+            var round2 = ConfigStore.Deserialize(ConfigStore.Serialize(round));
+            Check("14.2 配置能存能读（不丢新分组）",
+                round2.Session.DenyRemoteDesktop && round2.Session.BlockFastUserSwitch);
+
+            var fields = SettingsCatalog.All();
+            int n = fields.Count(f => f.Section.StartsWith("16、", StringComparison.Ordinal));
+            Check("14.3 开关目录里有这一组（3 项）→ 教师端策略面板会渲染出来",
+                n == 3 && fields.Any(f => f.Path == "Session.BlockFastUserSwitch") &&
+                fields.Any(f => f.Path == "Session.DenyRemoteDesktop"), n + " 项");
+
+            int before = SystemActions.AuditTrail.Count;
+            var engine = new GuardEngine(cfg);
+            engine.Start(null, AppDomain.CurrentDomain.BaseDirectory, true, EngineRole.SystemCore);
+            Check("14.4 服务侧（SystemCore，机器级）挂上了「防会话逃逸」",
+                engine.Guards.Any(g => g.Name == "防会话逃逸"));
+            engine.Stop();
+            var ops = SystemActions.AuditTrail.Skip(before).ToList();
+            Check("14.5 干跑时确实去写「禁快速切换用户」那个位置（HKLM\\...\\Policies\\System）",
+                ops.Any(a => a.Contains("Policies\\System\\HideFastUserSwitching = 1")));
+            Check("14.6 默认不碰远程桌面（DenyRemoteDesktop=false → 一条 RDP 相关写入都没有）",
+                !ops.Any(a => a.Contains("fDenyTSConnections")));
+
+            var engine2 = new GuardEngine(cfg);
+            engine2.Start(null, AppDomain.CurrentDomain.BaseDirectory, true, EngineRole.Full);
+            // 这两条都是 HKLM（机器级）：**只由服务侧写**。用户会话侧不重复挂，
+            // 否则两个进程对同一批值来回写、两套"原值备份"互相覆盖，退出时谁都还原不回去。
+            Check("14.7 只在服务侧写（用户会话侧不重复挂，避免两个进程互抢同一批 HKLM 值与备份）",
+                !engine2.Guards.Any(g => g.Name == "防会话逃逸"));
+            engine2.Stop();
+
+            // 没有原值备份 = 这些值不是我们写的 → 停止时绝不动系统（否则会把管理员/组策略设的值一起抹掉）
+            int before2 = SystemActions.AuditTrail.Count;
+            var lonely = new LabGuard.Core.Guards.SessionGuard();
+            lonely.AttachContext(new LabGuard.Core.Guards.GuardContext(cfg, AppDomain.CurrentDomain.BaseDirectory, null));
+            lonely.Stop();
+            var ops2 = SystemActions.AuditTrail.Skip(before2)
+                .Where(a => a.Contains("HideFastUserSwitching") || a.Contains("fDenyTSConnections")).ToList();
+            Check("14.8 没有原值备份时，停止**不动系统**（绝不删别人的设置）", ops2.Count == 0, ops2.Count + " 条");
         }
     }
 }

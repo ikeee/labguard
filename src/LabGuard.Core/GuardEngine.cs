@@ -60,6 +60,7 @@ namespace LabGuard.Core
                 _guards.Add(new SafeModeGuard());
                 _guards.Add(new BrowserPolicyGuard());
                 _guards.Add(new FileCreationGuard());
+                _guards.Add(new SessionGuard());      // 防会话逃逸：机器级策略，与登录的是哪个账号无关
                 _guards.Add(new WatchdogGuard());
             }
             else
@@ -140,7 +141,7 @@ namespace LabGuard.Core
                 new WatchdogGuard(), new FileCreationGuard(), new BrowserPolicyGuard(), new SafeModeGuard(),
                 new RegistryAclGuard(), new UsbGuard(), new HostsGuard(), new HidingGuard(),
                 new KeyboardHookGuard(), new ShellPolicyGuard(), new ProcessBlockGuard(), new ClassroomGuard(),
-                new NetworkGuard()
+                new NetworkGuard(), new SessionGuard()
             };
             foreach (IGuard g in all)
             {

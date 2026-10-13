@@ -1,5 +1,26 @@
 # 更新记录
 
+## v0.13.0（2026-10-13 · 防会话逃逸：换用户 / 新会话）
+
+**动机**：教师端 v0.12 的课堂演练把「多开桌面脱离管制」拆开看，最硬的一条不是虚拟桌面
+（`Shell.BlockWindowsKey` 已屏蔽 Win+Tab），而是 **Ctrl+Alt+Del → 切换用户**：换个账号登录，
+当前会话里的一切（HKCU 任务栏策略、锁屏/键鼠锁）就不作数了。
+
+- **新增配置组 `Session`（3 项）**：`Enabled` / `BlockFastUserSwitch`（默认开）/ `DenyRemoteDesktop`（默认关）。
+- **新增 `Guards/SessionGuard`**（服务侧 SystemCore 执行；两条都是 HKLM 机器级策略，
+  跟当前登录的是哪个账号无关）：
+  · 禁快速切换用户 → `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\HideFastUserSwitching=1`；
+  · 禁远程桌面接入 → `…Control\Terminal Server` 与 `Policies\Microsoft\Windows NT\Terminal Services\fDenyTSConnections=1`。
+  30 秒轮询，被改回就自动还原并报告违规。
+- **改之前先备份原值、停止/卸载时逐项还原**（`session-policy-backup.json`）：
+  · **没有备份文件 → 停止时绝不动系统**（说明这两项不是本程序写的，顺手删会抹掉管理员/组策略的值）；
+  · **干跑（自检 / 沙箱）不写备份、不落痕迹**（不碰真实 `%ProgramData%`）；
+  · HKLM 只由服务侧写，用户会话侧不重复挂（避免两个进程互抢值与备份）。
+- **默认值会改变现有部署的行为**：升级后老师下一次下发策略（或 `--init`）时，
+  "禁快速切换用户"会开始生效（`DenyRemoteDesktop` 仍默认关，不影响老师自己的远程排障）。
+- 开关目录 122 项 / 17 组（已重出并与教师端 `assets/catalog.json` 同步，两仓不漂移）。
+- 自检 **245 → 253 条**全绿。
+
 ## v0.12.0（2026-10-13 · 版本号随教师端 lockstep）
 
 - 客户端**代码无功能变化**：教师端 v0.12 的「临时课堂状态层」（上课/严管/考试一键切 + 到点自动回基础策略）

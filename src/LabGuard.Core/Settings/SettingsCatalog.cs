@@ -327,6 +327,23 @@ namespace LabGuard.Core.Settings
             list.Add(Bool("9、任务栏与系统工具", "Shell.NoFolderOptions", "禁用文件夹选项", null,
                 c => c.Shell.NoFolderOptions, (c, v) => c.Shell.NoFolderOptions = (bool)v));
 
+            // ============================================================ 16 防会话逃逸（v0.13）
+            list.Add(Bool("16、防会话逃逸（换用户/新会话）", "Session.Enabled", "启用本组（总开关）",
+                "堵『多开桌面脱离管制』里最硬的一条路：换用户 / 开第二个会话。两条都写机器级策略，"
+                + "**与当前登录的是哪个账号无关**（这正是它比『只改当前用户』强的地方）。",
+                c => c.Session.Enabled, (c, v) => c.Session.Enabled = (bool)v));
+            list.Add(Bool("16、防会话逃逸（换用户/新会话）", "Session.BlockFastUserSwitch", "禁止快速切换用户",
+                "写 HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\HideFastUserSwitching=1："
+                + "登录界面 / 开始菜单 / 任务管理器里的「切换用户」入口都不再出现。"
+                + "⚠ 学生仍可注销（注销不能逃逸管控：本程序是机器级服务，注销后那个会话没人）；"
+                + "若学生知道别的账号密码，注销后用那个账号登录仍可行——那是账号与制度问题，"
+                + "而且登进去后机器级策略（USB/浏览器/注册表/进程）一样生效，会话级策略也会被程序重新应用。",
+                c => c.Session.BlockFastUserSwitch, (c, v) => c.Session.BlockFastUserSwitch = (bool)v));
+            list.Add(Bool("16、防会话逃逸（换用户/新会话）", "Session.DenyRemoteDesktop", "禁止远程桌面接入",
+                "写 fDenyTSConnections=1（含策略位）：本机不再接受 RDP 连接，防止学生用远程桌面再开一个会话进来。"
+                + "⚠ 默认关闭：如果你自己会用**远程桌面连这台学生机**（排障/授课），开了就连不上了。",
+                c => c.Session.DenyRemoteDesktop, (c, v) => c.Session.DenyRemoteDesktop = (bool)v));
+
             // ============================================================ 10 安全模式
             list.Add(Bool("10、安全模式与启动菜单", "SafeMode.Enabled", "启用本组（总开关）", null,
                 c => c.SafeMode.Enabled, (c, v) => c.SafeMode.Enabled = (bool)v));

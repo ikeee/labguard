@@ -37,6 +37,7 @@ namespace LabGuard.Core.Config
         public HostsSettings Hosts { get; set; } = new HostsSettings();
         public BrowserSettings Browser { get; set; } = new BrowserSettings();
         public ShellSettings Shell { get; set; } = new ShellSettings();
+        public SessionSettings Session { get; set; } = new SessionSettings();
         public SafeModeSettings SafeMode { get; set; } = new SafeModeSettings();
         public SiteSettings Site { get; set; } = new SiteSettings();
         public RegistryAclSettings RegistryAcl { get; set; } = new RegistryAclSettings();
@@ -302,6 +303,30 @@ namespace LabGuard.Core.Config
         public bool DisableLockWorkstation { get; set; } = false;
         public bool HideFileExtensions { get; set; } = true;
         public bool NoFolderOptions { get; set; } = true;
+    }
+
+    /// <summary>
+    /// **防会话逃逸**（2026-10-13 新增）：学生换用户 / 开第二会话，是"多开桌面脱离管制"里最硬的一条路。
+    ///
+    /// 已实现的两条（都写机器级策略，与当前登录的是哪个账号无关）：
+    ///   ① 禁止**快速用户切换**：隐藏登录界面/开始菜单/任务管理器里的「切换用户」入口
+    ///      （`HKLM\...\Policies\System\HideFastUserSwitching=1`）；
+    ///   ② 禁止**远程桌面接入**：`fDenyTSConnections=1`（防止用 RDP 再开一个会话进来）。
+    ///
+    /// ⚠ 边界（写清楚，别让老师误以为"锁死了"）：
+    ///   · 学生**仍然可以注销**（注销不能用来逃逸：我们的服务是机器级、注销后那个会话根本没人）；
+    ///   · 如果学生知道**别的账号的密码**，注销后用那个账号登录仍可行 —— 这属于账号与制度问题
+    ///     （学生账号不该知道管理员密码）；而且他登进来之后，机器级策略（USB/浏览器/注册表/进程）
+    ///     一样生效，会话级的任务栏策略也会被服务重新拉起的本程序重新应用；
+    ///   · 本地管理员 / PE 启动不受任何用户态程序限制（本项目一贯的诚实边界）。
+    /// </summary>
+    public class SessionSettings
+    {
+        public bool Enabled { get; set; } = true;
+        /// <summary>禁止快速用户切换（去掉「切换用户」入口）。</summary>
+        public bool BlockFastUserSwitch { get; set; } = true;
+        /// <summary>禁止远程桌面接入（防第二会话）。默认关：机房若有"教师远程连这台机"的用法就不要开。</summary>
+        public bool DenyRemoteDesktop { get; set; } = false;
     }
 
     public class SafeModeSettings
