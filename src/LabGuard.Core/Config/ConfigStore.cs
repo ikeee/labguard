@@ -18,8 +18,52 @@ namespace LabGuard.Core.Config
     {
         public const string RegistryRoot = @"SOFTWARE\LabGuard";
 
-        public static string DataDir { get; } = Path.Combine(
+        public static string DataDir { get; private set; } = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "LabGuard");
+
+        /// <summary>
+        /// 是否处于**沙箱/便携模式**（由 <see cref="OverrideDataDir"/> 置位）。
+        ///
+        /// 这个标志存在的唯一目的：**沙箱进程绝不能碰真实机器的注册表镜像**。
+        /// 血泪教训（2026-10-13 测试台首跑）：沙箱目录里没有 config.json 时，旧逻辑会"从 HKLM 注册表镜像恢复"
+        /// —— 恢复出来的是真机旧配置（Enabled=true、各 Guard 全开），于是沙箱客户端把**真机**的
+        /// U 盘（usbstor）、浏览器策略、启动菜单全改了。沙箱模式下必须：不读镜像、不写镜像、强制干跑。
+        /// </summary>
+        public static bool IsSandbox { get; private set; }
+
+        /// <summary>
+        /// **测试/便携模式**：把配置目录整体改到别处（只影响当前进程）。
+        ///
+        /// 用途：在一台机器上并行跑多个"学生端沙箱"做端到端测试——各自独立的数据目录、独立的设备身份，
+        /// 互不干扰，也不碰真实安装（`%ProgramData%\LabGuard` 与 HKLM 完全不动）。
+        ///
+        /// 安全边界：**只有命令行参数能触发**（`--data-dir &lt;目录&gt;`）。服务由 SCM 启动、兜底任务由
+        /// 计划任务启动，它们的命令行里都不含这个参数，所以学生无法用它把真管控的配置指到别处。
+        /// </summary>
+        public static void OverrideDataDir(string dir)
+        {
+            if (string.IsNullOrWhiteSpace(dir)) return;
+            string full = Path.GetFullPath(dir);
+            // 防呆：别把沙箱指到真实安装目录——那就等于"测试台改真机"，2026-10-13 的事故就是这条路
+            string real = Path.GetFullPath(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "LabGuard"));
+            if (string.Equals(full.TrimEnd('\\'), real.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("拒绝把测试数据目录指向真实安装目录：" + real);
+            DataDir = full;
+            Directory.CreateDirectory(DataDir);
+            Log.Directory = Path.Combine(DataDir, "logs");
+            // 这几个模块的默认目录是"类型初始化时"从 DataDir 取的，必须一起改，否则会读到真实安装的目录
+            Server.ServerPairing.DataDir = DataDir;
+            Server.ServerPolicyCache.DataDir = DataDir;
+            Server.ServerSyncState.DataDir = DataDir;
+            Server.DeviceId.DataDir = DataDir;
+            IsSandbox = true;
+            // 沙箱里**一律干跑**，而且要用"谁也改不掉"的那把锁：
+            // GuardEngine.Start 会按调用方传的 dryRun 覆盖 Log.DryRun，普通赋值会被掀掉
+            Log.ForceDryRunOn();
+            Log.Warn("测试/便携（沙箱）模式：配置目录 = " + DataDir +
+                     "；不读/不写注册表镜像，且强制干跑（不修改系统）");
+        }
 
         public static string ConfigPath => Path.Combine(DataDir, "config.json");
 
@@ -155,6 +199,8 @@ namespace LabGuard.Core.Config
 
         private static GuardConfig LoadFromRegistryMirror(out DateTime savedAtUtc)
         {
+            // 沙箱模式：绝不读真机注册表镜像（否则会加载真机旧配置 → 沙箱客户端去改真机，2026-10-13 实测事故）
+            if (IsSandbox) { savedAtUtc = DateTime.MinValue; return null; }
             savedAtUtc = DateTime.MinValue;
             try
             {
@@ -195,9 +241,14 @@ namespace LabGuard.Core.Config
                 HardenDirectory(DataDir);
                 WriteRegistryMirror(cfg);
                 // 注册表加密镜像：配置文件被删/被破坏时自动恢复（HKLM\SOFTWARE\LabGuard 已被加固，普通用户改不了）
-                using (RegistryKey k = Registry.LocalMachine.CreateSubKey(RegistryRoot))
+                // 沙箱模式**必须跳过**：这是真机注册表。2026-10-13 隔离验真抓到过这一条——
+                // 上面 WriteRegistryMirror 已经挡了，这里还有一份重复的写入没挡。
+                if (!IsSandbox)
                 {
-                    k?.SetValue("CfgData", Encrypt(content), RegistryValueKind.Binary);
+                    using (RegistryKey k = Registry.LocalMachine.CreateSubKey(RegistryRoot))
+                    {
+                        k?.SetValue("CfgData", Encrypt(content), RegistryValueKind.Binary);
+                    }
                 }
                 ClearTamperFlags();
                 // 服务器管控状态联动：老师把 Server.Enabled 关掉时，必须同时清掉"服务器暂停"态，
@@ -213,6 +264,8 @@ namespace LabGuard.Core.Config
 
         public static bool IsInstalled()
         {
+            // 沙箱模式：不把真机的「已安装」标记当自己的（否则会走受损/篡改判定分支）
+            if (IsSandbox) return false;
             try
             {
                 using (RegistryKey k = Registry.LocalMachine.OpenSubKey(RegistryRoot))
@@ -269,6 +322,8 @@ namespace LabGuard.Core.Config
 
         private static void WriteRegistryMirror(GuardConfig cfg)
         {
+            // 沙箱模式：绝不写真机注册表（含 CfgData 加密镜像）
+            if (IsSandbox) return;
             using (RegistryKey k = Registry.LocalMachine.CreateSubKey(RegistryRoot))
             {
                 if (k == null) return;

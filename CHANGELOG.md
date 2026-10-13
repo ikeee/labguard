@@ -1,5 +1,32 @@
 # 更新记录
 
+## v0.11.1（2026-10-13 · 沙箱（便携）模式加固 + `--machine-name` 修正）
+
+**动机**：教师端要搭"一台机器跑 1 个真教师端 + N 个真学生端"的端到端测试台，客户端需要
+`--data-dir <目录>`（只改本进程配置目录）与 `--machine-name <名字>`（一台机器冒充多台）。
+**首跑出事**：沙箱没有真正隔离，回落真机注册表镜像里的旧配置，于是沙箱进程按真策略改了**真机**
+（U 盘禁用 `usbstor Start=4`、Chrome/Edge/Firefox 下载策略、启动菜单、HKLM\SOFTWARE\LabGuard
+还带 Deny ACE）。本版把隔离做到"可验证、改不动"。
+
+**沙箱/便携模式（`--data-dir`，只影响本进程）**：
+- 新增 `ConfigStore.OverrideDataDir()` + `IsSandbox`；同时改掉 `ServerPairing` / `ServerPolicyCache` /
+  `ServerSyncState` / `DeviceId` / `Log` 的目录（它们是在类型初始化时从 `DataDir` 取的，不改就会读真机）。
+- **绝不碰真机注册表**：不读/不写 `CfgData` 镜像、`IsInstalled()` 恒 false，
+  **签名密钥 `CfgKey` 改落沙箱目录**（`cfgkey.bin`）而不是 HKLM。
+- **强制干跑且改不掉**：新增 `Log.ForceDryRunOn()`。`GuardEngine.Start(..., dryRun:false)` 会覆盖
+  `Log.DryRun`，普通赋值会被掀掉——这就是首跑改真机的直接原因。
+- 服务侧：跳过自身进程 DACL 加固、跳过小助手守护（不再 `schtasks /run /tn LabGuard\Agent`，否则会把**真机**的
+  小助手拉起来）、跳过秒级复活线程。
+- 防呆：`--data-dir` 指向真实安装目录（`%ProgramData%\LabGuard`）直接**拒绝启动**。
+- 安全边界：只有命令行参数能触发；服务由 SCM 启动、兜底任务由计划任务启动，命令行里都不含该参数，
+  学生无法用它把真管控的配置指到别处。
+
+**修正**：`--machine-name` 之前只作用在查询串，心跳体仍写死 `Environment.MachineName`——
+一台机器冒充多台时上报的机器名全一样，教师端会把它们串台（分组/克隆诊断跟着错）。现在两处统一。
+
+自检仍 **245 条**全绿；教师端场景套件 21/21、隔离验真 7/7。
+版本 0.11.0 → **0.11.1**（与教师端 lockstep）。
+
 ## v0.11.0（2026-10-13 · 分组请求带身份 + 与教师端 lockstep）
 
 - **请求带设备身份**：`/api/version` 与 `/api/policy` 现在附带 `?device=<deviceId>&machine=<机器名>`，

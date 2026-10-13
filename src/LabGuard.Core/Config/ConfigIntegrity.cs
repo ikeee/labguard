@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Win32;
@@ -23,24 +24,39 @@ namespace LabGuard.Core.Config
         public const string PauseMagic = "LGPAUSE1";
         private static byte[] _cachedKey;
 
+        /// <summary>
+        /// 沙箱模式下的签名密钥落点：**沙箱目录里的文件**，而不是 HKLM。
+        /// 真实安装期密钥放 HKLM\SOFTWARE\LabGuard\CfgKey（普通用户读不到，是真机密）；
+        /// 但测试台的沙箱进程绝不能往真机注册表写一个它自己的密钥——
+        /// 2026-10-13 隔离验真就是这么抓到"沙箱污染真机"的。
+        /// </summary>
+        private static string SandboxKeyPath { get { return Path.Combine(ConfigStore.DataDir, "cfgkey.bin"); } }
+
         /// <summary>取签名密钥；不存在返回 null（= 升级前的老安装，调用方走一次性兼容分支）。</summary>
         public static byte[] TryGetKey()
         {
             if (_cachedKey != null) return _cachedKey;
             try
             {
-                using (RegistryKey k = Registry.LocalMachine.OpenSubKey(ConfigStore.RegistryRoot))
+                byte[] blob;
+                if (ConfigStore.IsSandbox)
                 {
-                    byte[] blob = k?.GetValue(KeyValueName) as byte[];
-                    if (blob == null || blob.Length == 0) return null;
-                    _cachedKey = ProtectedData.Unprotect(blob, null, DataProtectionScope.LocalMachine);
-                    return _cachedKey;
+                    if (!File.Exists(SandboxKeyPath)) return null;
+                    blob = File.ReadAllBytes(SandboxKeyPath);
                 }
+                else
+                {
+                    using (RegistryKey k = Registry.LocalMachine.OpenSubKey(ConfigStore.RegistryRoot))
+                        blob = k?.GetValue(KeyValueName) as byte[];
+                }
+                if (blob == null || blob.Length == 0) return null;
+                _cachedKey = ProtectedData.Unprotect(blob, null, DataProtectionScope.LocalMachine);
+                return _cachedKey;
             }
             catch { return null; }
         }
 
-        /// <summary>取密钥；没有就现场生成 32 字节随机密钥并落注册表（Save 路径用）。</summary>
+        /// <summary>取密钥；没有就现场生成 32 字节随机密钥并落盘（Save 路径用）。</summary>
         public static byte[] GetOrCreateKey()
         {
             byte[] key = TryGetKey();
@@ -50,9 +66,17 @@ namespace LabGuard.Core.Config
                 key = new byte[32];
                 using (var rng = new RNGCryptoServiceProvider()) rng.GetBytes(key);
                 byte[] blob = ProtectedData.Protect(key, null, DataProtectionScope.LocalMachine);
-                using (RegistryKey k = Registry.LocalMachine.CreateSubKey(ConfigStore.RegistryRoot))
+                if (ConfigStore.IsSandbox)
                 {
-                    k?.SetValue(KeyValueName, blob, RegistryValueKind.Binary);
+                    Directory.CreateDirectory(ConfigStore.DataDir);
+                    File.WriteAllBytes(SandboxKeyPath, blob);
+                }
+                else
+                {
+                    using (RegistryKey k = Registry.LocalMachine.CreateSubKey(ConfigStore.RegistryRoot))
+                    {
+                        k?.SetValue(KeyValueName, blob, RegistryValueKind.Binary);
+                    }
                 }
                 _cachedKey = key;
                 return key;

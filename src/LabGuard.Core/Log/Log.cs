@@ -18,8 +18,33 @@ namespace LabGuard.Core.Logging
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "LabGuard", "logs");
         public static LogLevel MinLevel { get; set; } = LogLevel.Info;
         public static bool EchoToConsole { get; set; }
-        /// <summary>干跑（模拟）模式：凡是会改动系统的动作都不会真正执行。</summary>
-        public static bool DryRun { get; set; }
+
+        private static bool _dryRun;
+        private static bool _dryRunForced;
+
+        /// <summary>
+        /// 干跑（模拟）模式：凡是会改动系统的动作都不会真正执行。
+        ///
+        /// 注意：**可以被人改成 false**（<see cref="Guards.GuardEngine.Start"/> 就按调用方传的
+        /// dryRun 覆盖它）。所以"测试/沙箱"这种**必须**干跑的场合要用 <see cref="ForceDryRunOn"/>。
+        /// </summary>
+        public static bool DryRun { get { return _dryRun || _dryRunForced; } set { _dryRun = value; } }
+
+        /// <summary>
+        /// 一旦置位，本进程**永远**是干跑：任何 `DryRun = false` 都改不回来。
+        ///
+        /// 为什么需要（2026-10-13 真机事故复盘）：测试台用 `--data-dir` 起的沙箱服务是
+        /// `GuardService` → `GuardEngine.Start(..., dryRun: false, EngineRole.SystemCore)`，
+        /// 那一句会把沙箱刚设好的 DryRun 直接掀掉，于是沙箱进程按真策略改真机
+        /// （U 盘禁用、浏览器策略、启动菜单……）。必须有一个"谁也改不掉"的总闸。
+        /// </summary>
+        public static void ForceDryRunOn()
+        {
+            _dryRunForced = true;
+            Warn("已锁定为干跑模式（本进程不会改动系统）");
+        }
+
+        public static bool DryRunForced { get { return _dryRunForced; } }
 
         public static void Debug(string msg) => Write(LogLevel.Debug, msg);
         public static void Info(string msg) => Write(LogLevel.Info, msg);

@@ -52,9 +52,39 @@ function Run-Step([string]$desc, [scriptblock]$action) {
     try { & $action; $done.Add($desc) } catch { Write-Host ('    ⚠ ' + $_.Exception.Message) -ForegroundColor Yellow }
 }
 function RegDel([string]$path) {
+    # 程序自己会给 HKLM\SOFTWARE\LabGuard 加 Deny ACE（拒绝 Users 删除）——**Deny 优先于管理员的 Allow**，
+    # 所以直接删会被"拒绝访问"挡住。先夺回权限（加当前用户 Allow + 去掉 Deny 规则）再删。
+    try {
+      $sub = $path -replace '^HKLM:\\',''
+      $k = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($sub, 'ReadWriteSubTree', 'ChangePermissions')
+      if ($k) {
+        $sec = $k.GetAccessControl([System.Security.AccessControl.AccessControlSections]::All)
+        $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+        $sec.AddAccessRule((New-Object System.Security.AccessControl.RegistryAccessRule(
+            $me, [System.Security.AccessControl.RegistryRights]::FullControl,
+            [System.Security.AccessControl.AccessControlType]::Allow)))
+        $sec.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) |
+          Where-Object { $_.AccessControlType -eq 'Deny' } | ForEach-Object { [void]$sec.RemoveAccessRule($_) }
+        $k.SetAccessControl($sec); $k.Close()
+      }
+    } catch {}
     try { if (Test-Path $path) { [Microsoft.Win32.Registry]::LocalMachine.DeleteSubKeyTree(($path -replace '^HKLM:\\',''), $false) } } catch {}
 }
 function RegDelCu([string]$path) {
+    try {
+      $sub = $path -replace '^HKCU:\\',''
+      $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($sub, 'ReadWriteSubTree', 'ChangePermissions')
+      if ($k) {
+        $sec = $k.GetAccessControl([System.Security.AccessControl.AccessControlSections]::All)
+        $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+        $sec.AddAccessRule((New-Object System.Security.AccessControl.RegistryAccessRule(
+            $me, [System.Security.AccessControl.RegistryRights]::FullControl,
+            [System.Security.AccessControl.AccessControlType]::Allow)))
+        $sec.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) |
+          Where-Object { $_.AccessControlType -eq 'Deny' } | ForEach-Object { [void]$sec.RemoveAccessRule($_) }
+        $k.SetAccessControl($sec); $k.Close()
+      }
+    } catch {}
     try { if (Test-Path $path) { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree(($path -replace '^HKCU:\\',''), $false) } } catch {}
 }
 function RegVal([string]$path, [string]$name, $value, [string]$type = 'DWord') {

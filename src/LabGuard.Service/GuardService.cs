@@ -25,6 +25,7 @@ namespace LabGuard.Service
         // ------------------------------------------------------------ 防拆：秒级复活 + 被杀计数
         private Thread _fastWatch;
         private volatile bool _stopping;
+        private bool _sandboxAgentSkipLogged;
         private readonly List<DateTime> _kills = new List<DateTime>();
         private DateTime _lastRelaunch = DateTime.MinValue;
         private int _relaunchCount;
@@ -195,6 +196,8 @@ namespace LabGuard.Service
         /// </summary>
         private void HardenSelf()
         {
+            // 沙箱（--data-dir）跑的是测试台里的"假学生机"，不该动这个进程的真实 DACL
+            if (ConfigStore.IsSandbox) { Log.Info("[沙箱] 跳过服务进程加固（不影响真机）"); return; }
             if (!(_config.AntiTamper.Enabled && _config.AntiTamper.HardenProcessDacl)) return;
             string detail;
             if (Core.Interop.ProcessHardening.HardenSelf(out detail)) Log.Info("[防拆] 服务进程已加固：" + detail);
@@ -208,6 +211,7 @@ namespace LabGuard.Service
         /// </summary>
         private void StartFastWatch()
         {
+            if (ConfigStore.IsSandbox) return;      // 沙箱：不守护（真机的小助手与本沙箱无关）
             if (!(_config.AntiTamper.Enabled && _config.AntiTamper.FastRestart)) return;
             _stopping = false;
             _fastWatch = new Thread(FastWatchLoop) { IsBackground = true, Name = "LabGuard.AgentFastWatch" };
@@ -317,6 +321,18 @@ namespace LabGuard.Service
 
         private void EnsureAgent()
         {
+            // 沙箱（--data-dir）：**绝不**碰真实计划任务/真实小助手进程。
+            // 这条以前不判过：测试台里的沙箱服务会去跑 `schtasks /run /tn LabGuard\Agent /i`，
+            // 在已经装过真客户端的机器上会把**真的小助手**拉起来（真机动作，跟沙箱毫无关系）。
+            if (ConfigStore.IsSandbox)
+            {
+                if (!_sandboxAgentSkipLogged)
+                {
+                    _sandboxAgentSkipLogged = true;
+                    Log.Info("[沙箱] 不拉起小助手进程、不碰计划任务（不影响真机）");
+                }
+                return;
+            }
             // 两个开关任一打开就守护小助手：
             // 「互相守护」是老开关，「进程防拆加固」是新开关 —— 机房常见配置是"只开网络组 + 防拆"，
             // 若这里只看 Watchdog.Enabled，学生一杀进程就没人管了（真机演练实测：20 秒都没回来）。

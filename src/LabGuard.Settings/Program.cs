@@ -15,6 +15,11 @@ namespace LabGuard.Settings
         {
             // ① 崩溃兜底：未处理异常要留日志 + 弹说明，不能闪退得无声无息（与 Agent 同款）
             LabGuard.Core.CrashHandler.Install("LabGuard.Settings");
+            // 测试/便携模式（只影响本进程）：--data-dir <目录>
+            int ddIndex = Array.IndexOf(args ?? new string[0], "--data-dir");
+            if (ddIndex >= 0 && args.Length > ddIndex + 1) ConfigStore.OverrideDataDir(args[ddIndex + 1]);
+            int mnIndex = Array.IndexOf(args ?? new string[0], "--machine-name");
+            if (mnIndex >= 0 && args.Length > mnIndex + 1) LabGuard.Core.Server.ServerClient.MachineNameOverride = args[mnIndex + 1];
             // ② WinForms 初始化**必须在第一个窗体创建之前**——密码框也是窗体！
             //    曾经把它放在密码校验之后，结果老师输对密码那一刻
             //    SetCompatibleTextRenderingDefault 抛 InvalidOperationException 直接崩掉，

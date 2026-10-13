@@ -72,6 +72,20 @@ namespace LabGuard.Core.Server
         private int _failures;
         private DateTime _lastCheckinUtc = DateTime.MinValue;
         private bool _loggedNotReady;
+
+        /// <summary>测试用：覆盖上报的机器名（一台机器上模拟多台"学生机"）。仅命令行 `--machine-name` 可设。</summary>
+        public static string MachineNameOverride;
+
+        /// <summary>上报用的机器名（默认本机名；测试台可用 --machine-name 覆盖）。</summary>
+        public static string MachineName
+        {
+            get
+            {
+                string m = string.IsNullOrWhiteSpace(MachineNameOverride) ? Environment.MachineName : MachineNameOverride;
+                if (string.IsNullOrEmpty(m)) m = "?";
+                return m.Length > 64 ? m.Substring(0, 64) : m;
+            }
+        }
         private bool _lastApplyFailed;          // 最近一次应用是否失败（上报给教师端做"应用失败"标注）
         private string _lastErrorCode;          // 稳定错误码（协议 §13.2 命名：LG-xxx-xxx）
 
@@ -108,7 +122,7 @@ namespace LabGuard.Core.Server
         {
             get
             {
-                string machine = Environment.MachineName ?? "?";
+                string machine = MachineName;
                 if (machine.Length > 64) machine = machine.Substring(0, 64);
                 return "?device=" + Uri.EscapeDataString(DeviceId.Get()) + "&machine=" + Uri.EscapeDataString(machine);
             }
@@ -311,7 +325,10 @@ namespace LabGuard.Core.Server
         /// <summary>checkin 请求体（协议 §3 字段表：machine 必填，version / seq / paused 可带）。</summary>
         public string BuildCheckinJson()
         {
-            string machine = Environment.MachineName ?? "?";
+            // 用 MachineName（含 --machine-name 覆盖）：设备列表/g分组都吃这个字段。
+            // 以前这里写死 Environment.MachineName，于是"一台机器冒充多台学生机"时
+            // 上报的机器名全是同一个 → 教师端把它们折叠/串台，分组与克隆诊断全错。
+            string machine = MachineName;
             if (machine.Length > 256) machine = machine.Substring(0, 256);
             // 稳定身份 + 已应用序号 + 应用结果（协议 §3）：教师端据此区分"同一台"，并判断 已应用/待应用/应用失败
             string deviceId = Server.DeviceId.Get();

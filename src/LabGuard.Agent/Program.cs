@@ -25,6 +25,14 @@ namespace LabGuard.Agent
             Log.EchoToConsole = HasArg(args, "--console");
             Log.MinLevel = dryRun ? LogLevel.Debug : LogLevel.Info;
 
+            // 测试/便携模式（只影响本进程）：--data-dir <目录>
+            // 测试用：--machine-name <名字> 覆盖上报的机器名（一台机器模拟多台学生机）
+            int mnIdx = Array.IndexOf(args ?? new string[0], "--machine-name");
+            if (mnIdx >= 0 && args.Length > mnIdx + 1) LabGuard.Core.Server.ServerClient.MachineNameOverride = args[mnIdx + 1];
+
+            int ddIdx = Array.IndexOf(args ?? new string[0], "--data-dir");
+            if (ddIdx >= 0 && args.Length > ddIdx + 1) ConfigStore.OverrideDataDir(args[ddIdx + 1]);
+
             GuardConfig config = ConfigStore.Load();
 
             if (HasArg(args, "--status"))

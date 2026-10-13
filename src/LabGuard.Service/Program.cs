@@ -16,6 +16,11 @@ namespace LabGuard.Service
         /// </summary>
         private static void Main(string[] args)
         {
+            // 测试/便携模式（只影响本进程）：--data-dir 换沙箱配置目录；--machine-name 覆盖上报机器名
+            int ddIdx = Array.IndexOf(args ?? new string[0], "--data-dir");
+            if (ddIdx >= 0 && args.Length > ddIdx + 1) ConfigStore.OverrideDataDir(args[ddIdx + 1]);
+            int mnIdx = Array.IndexOf(args ?? new string[0], "--machine-name");
+            if (mnIdx >= 0 && args.Length > mnIdx + 1) LabGuard.Core.Server.ServerClient.MachineNameOverride = args[mnIdx + 1];
             if (args != null && args.Length > 0 && args[0] == "--console")
             {
                 Log.EchoToConsole = true;
