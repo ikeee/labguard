@@ -345,21 +345,32 @@ namespace LabGuard.SelfTest
                   LabGuard.Core.Interop.ProcessHardening.VmWrite |
                   LabGuard.Core.Interop.ProcessHardening.SuspendResume)) == 0);
 
-            // 出厂口径（2026-10-15 产品决定）：**全关** —— 防拆四层也是关的，由老师/服务器按需激活。
-            // 注意「组关 ≠ 通道断」：小助手被杀后的存活由 Watchdog.Enabled 那条通道兜（见下面 [5.7]）。
-            Check("出厂全关：进程防拆四层都是关的（等老师激活）",
-                !new GuardConfig().AntiTamper.Enabled &&
-                !new GuardConfig().AntiTamper.HardenProcessDacl &&
-                !new GuardConfig().AntiTamper.FastRestart &&
-                !new GuardConfig().AntiTamper.ScheduledTaskGuard);
-            var atOpen = new GuardConfig();
-            atOpen.AntiTamper.Enabled = true;
-            atOpen.AntiTamper.HardenProcessDacl = true;
-            atOpen.AntiTamper.FastRestart = true;
-            atOpen.AntiTamper.ScheduledTaskGuard = true;
-            Check("老师打开「进程防拆」后四层齐活（总开关 + 三个子项都能打开）",
-                atOpen.AntiTamper.Enabled && atOpen.AntiTamper.HardenProcessDacl &&
-                atOpen.AntiTamper.FastRestart && atOpen.AntiTamper.ScheduledTaskGuard);
+            // 出厂口径（2026-10-15 最终定稿）= **自保全开 + 管控全关**：
+            //   · 管控（改学生机设置、拦软件、弹窗口）出厂全关，等教师机下发激活；
+            //   · **自我保护出厂就开** —— 老板原话"学生不能停止、删掉、杀掉客户端，除非输入管理员密码"。
+            //     它不是"管控学生"，而是"程序活着、能被激活"的前提（关掉它，全关状态下一分钟就被学生端收拾掉）。
+            Check("出厂自保：进程防拆四层默认全开（学生杀不掉 / 停了会自愈）",
+                new GuardConfig().AntiTamper.Enabled &&
+                new GuardConfig().AntiTamper.HardenProcessDacl &&
+                new GuardConfig().AntiTamper.FastRestart &&
+                new GuardConfig().AntiTamper.ScheduledTaskGuard);
+            Check("出厂自保：拦杀进程工具 / 反复被杀告警也默认开",
+                new GuardConfig().AntiTamper.BlockKillTools &&
+                new GuardConfig().AntiTamper.AlertOnRepeatedKill);
+            // 关键不变式（2026-10-15）：自保类关键词**不受**「违规软件拦截」组总闸控制。
+            // 出厂全关时那个组是关的，如果 taskkill 也一起被关掉，"学生杀不掉"就是空话。
+            var selfOnly = new GuardConfig();                       // 默认：该组关 + 自保开
+            var selfKw = LabGuard.Core.Guards.ProcessBlockGuard.KeywordsFor(selfOnly);
+            Check("自保：违规拦截组关着时，仍然拦 taskkill / Process Hacker（不被组总闸带走）",
+                System.Array.IndexOf(LabGuard.Core.Data.DefaultBlocklists.KillTools, "taskkill") >= 0 &&
+                selfKw.Any(k => k.Equals("taskkill", StringComparison.OrdinalIgnoreCase)));
+            Check("自保不等于接管管控：组关着时**不会**顺带拦游戏/任务管理器/注册表",
+                !selfKw.Contains("任务管理器") && !selfKw.Contains("注册表编辑器") &&
+                !selfKw.Any(k => k.Equals("扫雷", StringComparison.OrdinalIgnoreCase)));
+            var groupOn = new GuardConfig();
+            groupOn.ProcessBlock.Enabled = true;
+            Check("老师打开「违规软件拦截」组后：管控关键词照旧全进来（自保没有破坏原有行为）",
+                LabGuard.Core.Guards.ProcessBlockGuard.KeywordsFor(groupOn).Contains("任务管理器"));
             Check("杀进程工具清单已纳入 SystemInformer / taskkill",
                 LabGuard.Core.Data.DefaultBlocklists.KillTools.Length > 0 &&
                 System.Array.IndexOf(LabGuard.Core.Data.DefaultBlocklists.KillTools, "SystemInformer") >= 0 &&
@@ -398,9 +409,10 @@ namespace LabGuard.SelfTest
             // 但"全关"必须仍然能收到下发 —— 否则老师发什么都是石沉大海。所以有且只有四条**通道**开着。
             Console.WriteLine("[5.9] 出厂全关 + 通道四项（能被激活的必要条件）");
             var zero = new GuardConfig();
-            // 注意「互相守护 / Watchdog」**不在**这张清单里：它是通道③（小助手存活），出厂必须开着。
+            // 注意「互相守护 / Watchdog」与「进程防拆加固 / AntiTamper」**不在**这张清单里：
+            // 前者是通道③（小助手存活），后者是自保（学生杀不掉）—— 两个出厂都必须开着。
             string[] controlGroups = { "Classroom", "Network", "ProcessBlock", "FileCreation", "Usb", "Browser",
-                                       "Shell", "Session", "SafeMode", "RegistryAcl", "AntiTamper" };
+                                       "Shell", "Session", "SafeMode", "RegistryAcl" };
             var stillOn = new List<string>();
             foreach (string g in controlGroups)
             {
@@ -415,9 +427,10 @@ namespace LabGuard.SelfTest
             Check("通道①：总闸 Enabled 开着（否则老师发的任何单项都不会生效）", zero.Enabled);
             Check("通道②：服务器统一管控开着（没配对文件时本项无效果）", zero.Server.Enabled);
             Check("通道③：互相守护开着（小助手 = 会话级策略的执行者，被杀要能回来）", zero.Watchdog.Enabled);
-            Check("通道③：但守护的子项全关（不隐藏目录 / 不恢复文件 / 不锁定 / 不重启机器）",
-                !zero.Watchdog.HideInstallDir && !zero.Watchdog.RestoreMissingFiles &&
-                !zero.Watchdog.LockOnIntegrityFailure && !zero.Watchdog.RebootOnServiceFailure);
+            Check("自保：程序文件被删能自动恢复 + 关键文件缺失会锁定（对应\"不能删掉\"）",
+                zero.Watchdog.RestoreMissingFiles && zero.Watchdog.LockOnIntegrityFailure);
+            Check("自保：不隐藏安装目录（老师维护要看得到）、不因服务异常重启整台机器（危险项保持关）",
+                !zero.Watchdog.HideInstallDir && !zero.Watchdog.RebootOnServiceFailure);
             Check("通道④：暂停期间也守护小助手（2026-10-08 真机事故的教训）", zero.AntiTamper.KeepAliveWhenPaused);
 
             // 回归（2026-10-15 修的真 bug）：没启用、没改过系统的模块，Stop() **绝不能**去动系统。

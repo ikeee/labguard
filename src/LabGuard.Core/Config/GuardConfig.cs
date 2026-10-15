@@ -17,6 +17,10 @@ namespace LabGuard.Core.Config
     ///   ④ <see cref="AntiTamper"/>.KeepAliveWhenPaused：老师暂停期间也守护小助手
     ///      （2026-10-08 真机事故的教训，见该字段注释）。
     ///
+    /// **例外二：自我保护（防拆 + 守护）出厂就是开的**（2026-10-15 老板要求：
+    /// "学生不能停止、删掉、杀掉客户端，除非输入管理员密码"）。它不是"管控学生"，而是"程序活着、能被激活"的前提 ——
+    /// 进程 DACL / 秒级复活 / 兜底计划任务 / 杀进程工具拦截 / 反复被杀告警 / 文件被删能恢复 / 关键文件缺失锁定。
+    /// 详细清单见 CHANGELOG v0.15.1（自保全开 + 管控全关）。
     /// 其余每一项（含各分组的 <c>Enabled</c> 与组内开关）出厂都是**关**。注意：**组内具体项的默认值保留**
     /// （例如 USB 的"保留键鼠"、电子教室要盯的进程清单），这样老师一打开某个组就是一份合理配置，
     /// 不需要再逐项填 —— 但组关着时它们一条都不生效（每个 Guard 都先判自己那组的 Enabled）。
@@ -396,7 +400,7 @@ namespace LabGuard.Core.Config
     {
         public bool Enabled { get; set; } = true;
         /// <summary>程序文件被删除/被改时，从"系统级备份副本"自动恢复（默认开）。</summary>
-        public bool RestoreMissingFiles { get; set; } = false;
+        public bool RestoreMissingFiles { get; set; } = true;
         /// <summary>心跳上报地址（可选）：填了之后每 60 秒把本机状态 POST 给教师机上的监视器。</summary>
         public string ReportUrl { get; set; } = "";
         /// <summary>服务异常退出后自动重启电脑（sc failure … actions=reboot）。</summary>
@@ -406,7 +410,7 @@ namespace LabGuard.Core.Config
         /// <summary>隐藏安装目录（Hidden+System 属性；学生不易发现，可在设置里关闭）。</summary>
         public bool HideInstallDir { get; set; } = false;
         /// <summary>关键文件校验失败时是否进入锁定。</summary>
-        public bool LockOnIntegrityFailure { get; set; } = false;
+        public bool LockOnIntegrityFailure { get; set; } = true;
     }
 
     /// <summary>
@@ -418,24 +422,24 @@ namespace LabGuard.Core.Config
     /// </summary>
     public class AntiTamperSettings
     {
-        public bool Enabled { get; set; } = false;
+        public bool Enabled { get; set; } = true;
         /// <summary>
         /// ① 给小助手/服务进程套 DACL：只有 SYSTEM 与管理员能终止，当前用户只剩"查询"权。
         /// 标准学生在任务管理器点「结束任务」会收到「拒绝访问」。
         /// </summary>
-        public bool HardenProcessDacl { get; set; } = false;
+        public bool HardenProcessDacl { get; set; } = true;
         /// <summary>
         /// ② 秒级复活：服务用进程句柄等待（WaitForSingleObject），小助手一退出就立刻重拉，
         /// 不再等 <c>Watchdog.AgentRestartSeconds</c> 的轮询间隔。
         /// </summary>
-        public bool FastRestart { get; set; } = false;
+        public bool FastRestart { get; set; } = true;
         /// <summary>
         /// ③ 兜底计划任务（SYSTEM，每分钟）：服务不在就 net start，小助手不在就拉起。
         /// 对付"学生把服务停掉/删掉"——服务和代理同时没了也还有这一条。
         /// </summary>
-        public bool ScheduledTaskGuard { get; set; } = false;
+        public bool ScheduledTaskGuard { get; set; } = true;
         /// <summary>④ 反复被杀时升级告警并记入 tamper 标记（老师能从日志/心跳看到）。</summary>
-        public bool AlertOnRepeatedKill { get; set; } = false;
+        public bool AlertOnRepeatedKill { get; set; } = true;
         /// <summary>④ 的阈值：这么多分钟内被杀这么多次才算"有人在搞事"。</summary>
         public int RepeatKillWindowMinutes { get; set; } = 5;
         /// <summary>④ 的次数阈值。</summary>
@@ -444,7 +448,7 @@ namespace LabGuard.Core.Config
         /// 顺手把常见的"杀进程工具"（Process Hacker / SystemInformer / taskkill 等）纳入违规软件拦截。
         /// 用现有的「进程/内核/注册表工具」清单，不新增一套匹配逻辑。
         /// </summary>
-        public bool BlockKillTools { get; set; } = false;
+        public bool BlockKillTools { get; set; } = true;
         /// <summary>
         /// 「老师暂停监控」期间**仍然守护进程**（小助手被杀照样拉起，只是以"已暂停"形态运行、不启用策略）。
         /// 真机事故教训（2026-10-08）：老师手势解锁断网遮罩 → 写入 paused.flag →

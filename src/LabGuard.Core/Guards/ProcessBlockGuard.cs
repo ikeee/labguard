@@ -17,7 +17,15 @@ namespace LabGuard.Core.Guards
     public sealed class ProcessBlockGuard : GuardBase
     {
         public override string Name => "违规软件拦截";
-        public override bool Enabled => Context?.Config.ProcessBlock.Enabled ?? false;
+        /// <summary>
+        /// 本模块什么时候跑：① 「违规软件拦截」组开着；**或**② 自保的「拦杀进程工具」开着。
+        /// ② 是 2026-10-15 加的：出厂口径"自保全开 + 管控全关"下，那个组默认是关的，
+        /// 只靠 ① 的话"学生拿 taskkill 杀不掉"就成了一句空话（见 KeywordsFor 的注释）。
+        /// </summary>
+        public override bool Enabled =>
+            Context == null ? false :
+            (Context.Config.ProcessBlock.Enabled ||
+             (Context.Config.AntiTamper.Enabled && Context.Config.AntiTamper.BlockKillTools));
         protected override int IntervalMs => 2500;
 
         private readonly Dictionary<string, DateTime> _recent = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
@@ -133,34 +141,48 @@ namespace LabGuard.Core.Guards
                    "注：电脑死机时不能用任务管理器，可同时按 ctrl+alt+del，点【注销】，电脑不会自动还原。";
         }
 
-        private List<string> BuildKeywords()
+        /// <summary>
+        /// 算"这一轮要拦哪些关键词"。**纯函数**（只吃配置，不碰 Context/系统），自检可以直接断言。
+        ///
+        /// 2026-10-15 起的分界：**自保类关键词不受「违规软件拦截」组总闸控制**。
+        /// 起因：出厂口径是"自保全开 + 管控全关"，而「违规软件拦截」组默认是关的 ——
+        /// 如果"拦住 taskkill / Process Hacker"这句话还要挂在那个总闸上，面板上看着开了、
+        /// 实际上一条都没拦（正是「开了但不会生效」的典型）。所以：**组关着时只拦杀进程工具**。
+        /// </summary>
+        public static List<string> KeywordsFor(Config.GuardConfig config)
         {
-            var cfg = Context.Config.ProcessBlock;
+            var cfg = config.ProcessBlock;
             var list = new List<string>();
-            if (cfg.BlockClassroomCrack) list.AddRange(DefaultBlocklists.ClassroomCrack);
-            if (cfg.BlockProcessTools) list.AddRange(DefaultBlocklists.ProcessTools);
-            // 防拆④：把"专门用来结束进程"的工具也纳进来（受「进程防拆加固」里的独立开关控制）
-            if (Context.Config.AntiTamper.Enabled && Context.Config.AntiTamper.BlockKillTools)
+            // —— 管控类：整组受「违规软件拦截」总闸控制（组关着时一条都不加）——
+            if (cfg.Enabled)
+            {
+                if (cfg.BlockClassroomCrack) list.AddRange(DefaultBlocklists.ClassroomCrack);
+                if (cfg.BlockProcessTools) list.AddRange(DefaultBlocklists.ProcessTools);
+                if (cfg.BlockVirtualDesktop) list.AddRange(DefaultBlocklists.VirtualDesktop);
+                if (cfg.BlockAntiVirus) list.AddRange(DefaultBlocklists.AntiVirus);
+                if (cfg.BlockArchivers) list.AddRange(DefaultBlocklists.Archivers);
+                if (cfg.BlockGames) list.AddRange(DefaultBlocklists.Games);
+                if (cfg.BlockTaskManager) list.Add("任务管理器");
+                if (cfg.BlockRegedit) list.Add("注册表编辑器");
+                if (cfg.BlockCommandPrompt)
+                {
+                    list.Add("Windows 命令处理程序");
+                    list.Add("Windows Command Processor");
+                    list.Add("Windows PowerShell");
+                }
+                foreach (string extra in cfg.ExtraKeywords)
+                {
+                    foreach (string one in (extra ?? "").Split(new[] { ',', ';', '\r', '\n', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                        list.Add(one.Trim());
+                }
+            }
+            // —— 自保类：不受上面那个总闸控制（见方法注释）——
+            if (config.AntiTamper.Enabled && config.AntiTamper.BlockKillTools)
                 list.AddRange(DefaultBlocklists.KillTools);
-            if (cfg.BlockVirtualDesktop) list.AddRange(DefaultBlocklists.VirtualDesktop);
-            if (cfg.BlockAntiVirus) list.AddRange(DefaultBlocklists.AntiVirus);
-            if (cfg.BlockArchivers) list.AddRange(DefaultBlocklists.Archivers);
-            if (cfg.BlockGames) list.AddRange(DefaultBlocklists.Games);
-            if (cfg.BlockTaskManager) list.Add("任务管理器");
-            if (cfg.BlockRegedit) list.Add("注册表编辑器");
-            if (cfg.BlockCommandPrompt)
-            {
-                list.Add("Windows 命令处理程序");
-                list.Add("Windows Command Processor");
-                list.Add("Windows PowerShell");
-            }
-            foreach (string extra in cfg.ExtraKeywords)
-            {
-                foreach (string one in (extra ?? "").Split(new[] { ',', ';', '\r', '\n', ' ' }, StringSplitOptions.RemoveEmptyEntries))
-                    list.Add(one.Trim());
-            }
             return list;
         }
+
+        private List<string> BuildKeywords() { return KeywordsFor(Context.Config); }
 
         private bool IsClassroom(string processName)
         {
@@ -197,6 +219,10 @@ namespace LabGuard.Core.Guards
         private void ApplyIfeo()
         {
             var cfg = Context.Config.ProcessBlock;
+            // 组关着就**一个字都不写**：IFEO 是"让游戏/破解工具起不来"的管控动作，
+            // 而自保（拦杀进程工具）只需要关键词拦截，不需要动注册表。
+            // （这条是被自检"全关配置起引擎再停止 → 一条系统写入都没有"抓出来的真回归。）
+            if (!cfg.Enabled) return;
             if (cfg.BlockGames)
             {
                 foreach (string g in DefaultBlocklists.GamesIfeo)

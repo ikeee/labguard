@@ -118,7 +118,11 @@ namespace LabGuard.Core.Guards
         protected override void OnStart()
         {
             WriteManifest();
-            // 启动时先做一次"文件体检+自愈"：被删的立刻从系统级备份副本恢复
+            // 启动时先做一次"文件体检+自愈"：被删的立刻从系统级备份副本恢复。
+            // **干跑 / 沙箱下绝不做**：这一步会往安装目录**写文件**，而"干跑不修改任何东西"是明面上的承诺
+            // （沙箱测试台也正是在真机上跑，就靠这条）。2026-10-15 起 RestoreMissingFiles 出厂默认开，
+            // 不拦住的话每次起沙箱客户端都会去摸真机那份 %ProgramData%\LabGuard\payload。
+            if (Log.DryRun || Config.ConfigStore.IsSandbox) return;
             if (Context?.Config.Watchdog.RestoreMissingFiles == true) RestoreFromPayload(Context.InstallDir, null, Context);
         }
 
