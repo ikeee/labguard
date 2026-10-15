@@ -15,7 +15,10 @@ namespace LabGuard.Core.Guards
     public sealed class HidingGuard : GuardBase
     {
         public override string Name => "安装目录隐藏";
-        public override bool Enabled => Context?.Config.Watchdog.Enabled == true;
+        // 隐藏安装目录是**独立**的一项策略，不再被"互相守护"顺带打开：
+        // 只开守护（=只想让小助手被杀后回来）不该顺手把安装目录藏起来。
+        public override bool Enabled =>
+            Context?.Config.Watchdog.Enabled == true && Context.Config.Watchdog.HideInstallDir;
         protected override int IntervalMs => 30000;
 
         private string TargetDir => string.IsNullOrEmpty(ConfigStore.InstallDir)
@@ -55,6 +58,7 @@ namespace LabGuard.Core.Guards
                 {
                     SetAttrs(f, hidden);
                 }
+                if (hidden) MarkApplied();   // 只有"藏起来"才算改过系统；"恢复可见"是还原动作本身
                 if (report) Log.Info("安装目录已设为" + (hidden ? "隐藏" : "可见") + "：" + dir);
                 SetStatus(hidden ? "安装目录已隐藏" : "安装目录可见");
             }

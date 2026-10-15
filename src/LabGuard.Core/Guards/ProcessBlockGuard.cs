@@ -207,6 +207,8 @@ namespace LabGuard.Core.Guards
                 foreach (string c in DefaultBlocklists.BlockedCommandsIfeo)
                     WriteIfeo(c);
             }
+            // 只有真的写过 IFEO 才算（否则 Stop() 时不该去删 IFEO 项）
+            if (cfg.BlockGames || cfg.BlockClassroomCrack) MarkApplied();
         }
 
         private static void WriteIfeo(string exeName)

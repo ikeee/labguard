@@ -58,7 +58,12 @@ namespace LabGuard.Core.Guards
             foreach (string k in Keys)
             {
                 if (SystemActions.RegistryKeyExists(RegistryHive.LocalMachine, k))
+                {
                     SystemActions.SetRegistryValue(RegistryHive.LocalMachine, k, "Start", 4, RegistryValueKind.DWord);
+                    // 注意：只有**真的写过**才标 applied。反例：勾了「允许 USB 存储」时 OnStart 直接返回、
+                    // 一条都没写，此时 Stop() 绝不能把 usbstor 写回 3（会把学校本来设的 4 打开）。
+                    MarkApplied();
+                }
             }
             Log.Info("已禁用 USB 存储设备（usbstor Start=4）");
         }

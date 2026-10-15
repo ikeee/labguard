@@ -41,6 +41,7 @@ namespace LabGuard.Core.Guards
                         @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "ShowSuperHidden", 0,
                         Microsoft.Win32.RegistryValueKind.DWord);
                 }
+                MarkApplied();     // 黑名单区块真的写进 hosts 了
             }
             // 即使用集中 DNS 过滤（不写黑名单），也要把 hosts 设成只读，
             // 并留一份内容基线（学生用管理员权限改 hosts 时能立刻还原）。
@@ -50,6 +51,7 @@ namespace LabGuard.Core.Guards
                 _baselineContent = HostsFile.ReadRaw();
                 _baselineHash = HostsFile.Sha256Of(_baselineContent);
                 Log.Info("hosts 内容基线已记录（防学生本地写映射绕过集中 DNS）");
+                MarkApplied();     // hosts 只读 ACL 也是一次系统改动（Stop 时要放开）
             }
         }
 

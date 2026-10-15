@@ -345,11 +345,21 @@ namespace LabGuard.SelfTest
                   LabGuard.Core.Interop.ProcessHardening.VmWrite |
                   LabGuard.Core.Interop.ProcessHardening.SuspendResume)) == 0);
 
-            Check("默认开启进程防拆（四层都开）",
-                new GuardConfig().AntiTamper.Enabled &&
-                new GuardConfig().AntiTamper.HardenProcessDacl &&
-                new GuardConfig().AntiTamper.FastRestart &&
-                new GuardConfig().AntiTamper.ScheduledTaskGuard);
+            // 出厂口径（2026-10-15 产品决定）：**全关** —— 防拆四层也是关的，由老师/服务器按需激活。
+            // 注意「组关 ≠ 通道断」：小助手被杀后的存活由 Watchdog.Enabled 那条通道兜（见下面 [5.7]）。
+            Check("出厂全关：进程防拆四层都是关的（等老师激活）",
+                !new GuardConfig().AntiTamper.Enabled &&
+                !new GuardConfig().AntiTamper.HardenProcessDacl &&
+                !new GuardConfig().AntiTamper.FastRestart &&
+                !new GuardConfig().AntiTamper.ScheduledTaskGuard);
+            var atOpen = new GuardConfig();
+            atOpen.AntiTamper.Enabled = true;
+            atOpen.AntiTamper.HardenProcessDacl = true;
+            atOpen.AntiTamper.FastRestart = true;
+            atOpen.AntiTamper.ScheduledTaskGuard = true;
+            Check("老师打开「进程防拆」后四层齐活（总开关 + 三个子项都能打开）",
+                atOpen.AntiTamper.Enabled && atOpen.AntiTamper.HardenProcessDacl &&
+                atOpen.AntiTamper.FastRestart && atOpen.AntiTamper.ScheduledTaskGuard);
             Check("杀进程工具清单已纳入 SystemInformer / taskkill",
                 LabGuard.Core.Data.DefaultBlocklists.KillTools.Length > 0 &&
                 System.Array.IndexOf(LabGuard.Core.Data.DefaultBlocklists.KillTools, "SystemInformer") >= 0 &&
@@ -377,10 +387,63 @@ namespace LabGuard.SelfTest
                 !LabGuard.Core.Guards.WatchdogGuard.ShouldKeepAgentAlive(cfgC, false));
             var cfgD = new GuardConfig();
             cfgD.Watchdog.Enabled = false;                      // 只开防拆（机房常见："只开网络组 + 防拆"）
+            cfgD.AntiTamper.Enabled = true;                     // ← 显式打开（出厂全关，不能再靠默认值）
             Check("只开「进程防拆」、关「互相守护」时仍然守护",
                 LabGuard.Core.Guards.WatchdogGuard.ShouldKeepAgentAlive(cfgD, true));
             Check("空配置不会抛异常",
                 !LabGuard.Core.Guards.WatchdogGuard.ShouldKeepAgentAlive(null, true));
+
+            // ---------------------------------------------------------------- [5.9] 出厂全关（2026-10-15）
+            // 产品决定：学生端装上后**不碰任何设置、不拦任何软件、不弹任何窗口**，等教师机下发激活。
+            // 但"全关"必须仍然能收到下发 —— 否则老师发什么都是石沉大海。所以有且只有四条**通道**开着。
+            Console.WriteLine("[5.9] 出厂全关 + 通道四项（能被激活的必要条件）");
+            var zero = new GuardConfig();
+            // 注意「互相守护 / Watchdog」**不在**这张清单里：它是通道③（小助手存活），出厂必须开着。
+            string[] controlGroups = { "Classroom", "Network", "ProcessBlock", "FileCreation", "Usb", "Browser",
+                                       "Shell", "Session", "SafeMode", "RegistryAcl", "AntiTamper" };
+            var stillOn = new List<string>();
+            foreach (string g in controlGroups)
+            {
+                var prop = typeof(GuardConfig).GetProperty(g);
+                object sub = prop.GetValue(zero);
+                var en = sub.GetType().GetProperty("Enabled");
+                if (en != null && (bool)en.GetValue(sub)) stillOn.Add(g);
+            }
+            Check("出厂全关：所有管控组（含 USB/浏览器/网络/电子教室…）都是关的",
+                stillOn.Count == 0, stillOn.Count == 0 ? "" : ("仍有开着的组：" + string.Join("/", stillOn)));
+            Check("出厂全关：hosts 只读加固也是关的（不动 hosts 文件）", !zero.Hosts.ProtectFileAcl);
+            Check("通道①：总闸 Enabled 开着（否则老师发的任何单项都不会生效）", zero.Enabled);
+            Check("通道②：服务器统一管控开着（没配对文件时本项无效果）", zero.Server.Enabled);
+            Check("通道③：互相守护开着（小助手 = 会话级策略的执行者，被杀要能回来）", zero.Watchdog.Enabled);
+            Check("通道③：但守护的子项全关（不隐藏目录 / 不恢复文件 / 不锁定 / 不重启机器）",
+                !zero.Watchdog.HideInstallDir && !zero.Watchdog.RestoreMissingFiles &&
+                !zero.Watchdog.LockOnIntegrityFailure && !zero.Watchdog.RebootOnServiceFailure);
+            Check("通道④：暂停期间也守护小助手（2026-10-08 真机事故的教训）", zero.AntiTamper.KeepAliveWhenPaused);
+
+            // 回归（2026-10-15 修的真 bug）：没启用、没改过系统的模块，Stop() **绝不能**去动系统。
+            // 以前 Stop() 会无条件跑各模块的"还原"分支 —— 浏览器策略 = 删 HKLM 策略键、USB = 把 usbstor 写回 3。
+            // 出厂全关下每次暂停/改策略都会触发，等于把别人（学校组策略/管理员）设的值改掉。
+            int beforeZero = SystemActions.AuditTrail.Count;
+            foreach (EngineRole role in new[] { EngineRole.SystemCore, EngineRole.Full })
+            {
+                var e = new GuardEngine(zero);
+                e.Start(null, AppDomain.CurrentDomain.BaseDirectory, true, role);
+                e.Stop();
+            }
+            var zeroOps = SystemActions.AuditTrail.Skip(beforeZero).ToList();
+            Check("全关配置：起引擎再停止，**一条系统写入都没有**（没动过就不许还原）",
+                zeroOps.Count == 0, zeroOps.Count == 0 ? "" : (zeroOps.Count + " 条：" + string.Join(" | ", zeroOps.Take(3))));
+
+            // 反向验证：明着打开一组，干跑里必须能看到它去写系统（证明上面那条不是"什么检查都没跑"）
+            var usbOn = new GuardConfig();
+            usbOn.Usb.Enabled = true;
+            int beforeUsb = SystemActions.AuditTrail.Count;
+            var eUsb = new GuardEngine(usbOn);
+            eUsb.Start(null, AppDomain.CurrentDomain.BaseDirectory, true, EngineRole.SystemCore);
+            var usbOps = SystemActions.AuditTrail.Skip(beforeUsb).ToList();
+            eUsb.Stop();
+            Check("反向验证：只打开「USB 存储设备」→ 干跑里出现 usbstor 写入（闸门不是空转）",
+                usbOps.Any(a => a.Contains("usbstor")), usbOps.Count + " 条");
 
             // 用可控时间断言（真机教训：一天刷了 480 行同样的 INFO，老师根本不会看）
             string tmpStamp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "labguard-selftest-pausehint.stamp");
@@ -1414,8 +1477,9 @@ namespace LabGuard.SelfTest
             Console.WriteLine("[14] 防会话逃逸（换用户 / 新会话）");
 
             var cfg = new GuardConfig();
-            Check("14.1 默认值：启用本组 + 禁快速切换用户；**远程桌面默认关**（怕把老师自己的远程排障也挡了）",
-                cfg.Session.Enabled && cfg.Session.BlockFastUserSwitch && !cfg.Session.DenyRemoteDesktop);
+            Check("14.1 出厂全关（组是关的）+ 组内默认值合理：禁快速切换用户、**远程桌面仍默认关**（怕把老师自己的远程排障也挡了）",
+                !cfg.Session.Enabled && cfg.Session.BlockFastUserSwitch && !cfg.Session.DenyRemoteDesktop);
+            cfg.Session.Enabled = true;     // 下面几条验的是"打开之后"的行为（出厂默认是关的）
 
             var round = ConfigStore.Deserialize(ConfigStore.Serialize(cfg));
             round.Session.DenyRemoteDesktop = true;

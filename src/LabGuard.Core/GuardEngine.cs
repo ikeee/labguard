@@ -147,10 +147,13 @@ namespace LabGuard.Core
             {
                 try
                 {
-                    // 只走"还原"分支：注入 Context 后直接 Stop（不要先 Start，避免又把系统改一遍）
+                    // 只走"还原"分支：注入 Context 后直接 ForceStop（不要先 Start，避免又把系统改一遍）
+                    // 这里必须用 ForceStop（= 不管本模块这次有没有"改过系统"都要还原）：卸载 / 退出程序
+                    // 面对的是"以前某次运行里改过、现在要还回去"，跟平时的 Stop() 语义不同。
                     var baseGuard = g as GuardBase;
                     baseGuard?.AttachContext(context);
-                    g.Stop();
+                    if (baseGuard != null) baseGuard.ForceStop();
+                    else g.Stop();
                 }
                 catch (Exception ex) { Log.Error("还原 " + g.Name + " 失败", ex); }
             }

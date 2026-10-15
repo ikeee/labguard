@@ -3,7 +3,24 @@ using System.Collections.Generic;
 
 namespace LabGuard.Core.Config
 {
-    /// <summary>总体配置。字段命名与"功能对照表"一一对应，便于和逐项对照。</summary>
+    /// <summary>
+    /// 总体配置。字段命名与"功能对照表"一一对应，便于和逐项对照。
+    ///
+    /// **出厂口径 = 全关**（2026-10-15 产品决定）：装上学生端之后，本程序**不碰学生机任何设置、
+    /// 不拦任何软件、不弹任何窗口**，等教师机下发策略再逐项激活。
+    ///
+    /// 唯一的例外是四条**通道**（它们不是"管控"，而是"能被激活"的必要条件；面板上会显示为开）：
+    ///   ① <see cref="Enabled"/>（总闸）：关着 → 引擎不启动 → 老师发下来的**任何**单项都不会生效；
+    ///   ② <see cref="Server"/>.Enabled：客户端能被教师机激活的唯一通路（没配对文件时本项无效果）；
+    ///   ③ <see cref="Watchdog"/>.Enabled：小助手进程被杀后由服务拉起 —— 会话级策略（遮罩/任务栏…）
+    ///      的执行者就是它，它不在 = 那些策略没人执行；
+    ///   ④ <see cref="AntiTamper"/>.KeepAliveWhenPaused：老师暂停期间也守护小助手
+    ///      （2026-10-08 真机事故的教训，见该字段注释）。
+    ///
+    /// 其余每一项（含各分组的 <c>Enabled</c> 与组内开关）出厂都是**关**。注意：**组内具体项的默认值保留**
+    /// （例如 USB 的"保留键鼠"、电子教室要盯的进程清单），这样老师一打开某个组就是一份合理配置，
+    /// 不需要再逐项填 —— 但组关着时它们一条都不生效（每个 Guard 都先判自己那组的 Enabled）。
+    /// </summary>
     public class GuardConfig
     {
         public int Version { get; set; } = 1;
@@ -18,7 +35,13 @@ namespace LabGuard.Core.Config
         /// 0 = 不等待（不推荐）。默认 10 秒。
         /// </summary>
         public int ConfirmDelaySeconds { get; set; } = 10;
-        /// <summary>已安装/已启用管控的总开关；关闭后各 Guard 不再纠正系统状态。</summary>
+        /// <summary>
+        /// **通道总闸**（注意：它不是"某条管控"，所以出厂是**开着**的）。
+        /// 语义 = "本机受管控的总闸"：关掉它 → 引擎不启动 → 老师发下来的**任何**单项策略都不会生效
+        /// （面板上看着开了、机器上什么也没发生 —— 这是最容易踩的坑）。
+        /// 出厂口径（见类注释）：**所有管控组都是关的**，只有这条总闸 + Server / Watchdog 两条通道项是开的。
+        /// 维护/排障时关掉它 = 本机彻底不受管。
+        /// </summary>
         public bool Enabled { get; set; } = true;
         /// <summary>
         /// 退出/暂停后自动恢复管控的时间（分钟），0 = 不自动恢复（需老师手动）。
@@ -66,7 +89,7 @@ namespace LabGuard.Core.Config
 
     public class ClassroomSettings
     {
-        public bool Enabled { get; set; } = true;
+        public bool Enabled { get; set; } = false;
         /// <summary>
         /// 需要盯住的课堂软件进程名（**存在就防挂起，不存在不报告**——避免"广播时才启动"的进程每轮误报）。
         /// 极域 StudentMain / 红蜘蛛 REDAgent / 锐捷 ClassMangerApp / 噢易 MultiClient、Ctsc_Multi、VoiClient、TrayClient。
@@ -100,7 +123,7 @@ namespace LabGuard.Core.Config
 
     public class NetworkSettings
     {
-        public bool Enabled { get; set; } = true;
+        public bool Enabled { get; set; } = false;
 
         /// <summary>
         /// 强制学生机 DNS 指向集中过滤服务器（例如教师机的 AdGuard）。
@@ -196,7 +219,7 @@ namespace LabGuard.Core.Config
 
     public class ProcessBlockSettings
     {
-        public bool Enabled { get; set; } = true;
+        public bool Enabled { get; set; } = false;
         /// <summary>破解/控制类工具。</summary>
         public bool BlockClassroomCrack { get; set; } = true;
         /// <summary>进程/内核/注册表工具。</summary>
@@ -222,7 +245,7 @@ namespace LabGuard.Core.Config
 
     public class FileCreationSettings
     {
-        public bool Enabled { get; set; } = true;
+        public bool Enabled { get; set; } = false;
         /// <summary>AllowAll / CppOnly / DenyAll（12 组开关里的三档）。</summary>
         public string Mode { get; set; } = "CppOnly";
         public List<string> WatchPaths { get; set; } = new List<string>
@@ -241,7 +264,7 @@ namespace LabGuard.Core.Config
 
     public class UsbSettings
     {
-        public bool Enabled { get; set; } = true;
+        public bool Enabled { get; set; } = false;
         /// <summary>允许 USB 存储设备（false = 禁用 usbstor 驱动）。</summary>
         public bool AllowStorage { get; set; } = false;
         /// <summary>保留 USB 键鼠（只禁存储类，不禁用整个 USB）。</summary>
@@ -256,7 +279,7 @@ namespace LabGuard.Core.Config
         /// </summary>
         public bool Enabled { get; set; } = false;
         /// <summary>即使不用黑名单，也给 hosts 文件加 ACL（只读），防止学生自己往 hosts 写映射绕过集中 DNS。</summary>
-        public bool ProtectFileAcl { get; set; } = true;
+        public bool ProtectFileAcl { get; set; } = false;
         /// <summary>额外追加的域名（除内置清单外）。</summary>
         public List<string> ExtraDomains { get; set; } = new List<string>();
         public bool UseBuiltInDomains { get; set; } = true;
@@ -270,7 +293,7 @@ namespace LabGuard.Core.Config
 
     public class BrowserSettings
     {
-        public bool Enabled { get; set; } = true;
+        public bool Enabled { get; set; } = false;
         public bool BlockDownloads { get; set; } = true;
         public bool BlockSaveAs { get; set; } = true;
         public bool BlockDevTools { get; set; } = true;
@@ -290,7 +313,7 @@ namespace LabGuard.Core.Config
 
     public class ShellSettings
     {
-        public bool Enabled { get; set; } = true;
+        public bool Enabled { get; set; } = false;
         /// <summary>隐藏任务视图（虚拟桌面）按钮。</summary>
         public bool HideTaskView { get; set; } = true;
         /// <summary>屏蔽 Win 键（防虚拟桌面脱离控制）。</summary>
@@ -322,7 +345,7 @@ namespace LabGuard.Core.Config
     /// </summary>
     public class SessionSettings
     {
-        public bool Enabled { get; set; } = true;
+        public bool Enabled { get; set; } = false;
         /// <summary>禁止快速用户切换（去掉「切换用户」入口）。</summary>
         public bool BlockFastUserSwitch { get; set; } = true;
         /// <summary>禁止远程桌面接入（防第二会话）。默认关：机房若有"教师远程连这台机"的用法就不要开。</summary>
@@ -331,7 +354,7 @@ namespace LabGuard.Core.Config
 
     public class SafeModeSettings
     {
-        public bool Enabled { get; set; } = true;
+        public bool Enabled { get; set; } = false;
         /// <summary>
         /// **在"安全模式"（含无网络的安全模式）里是否继续管控**。默认 false = 不加载、不干预，
         /// 给老师留一条后路：学生机出问题/不再使用/要彻底卸载时，进安全模式就能下手。
@@ -347,13 +370,13 @@ namespace LabGuard.Core.Config
     public class SiteSettings
     {
         /// <summary>在断网遮罩上显示机器编号（取计算机名后 N 位）。</summary>
-        public bool ShowMachineNumber { get; set; } = true;
+        public bool ShowMachineNumber { get; set; } = false;
         public int MachineNumberChars { get; set; } = 6;
     }
 
     public class RegistryAclSettings
     {
-        public bool Enabled { get; set; } = true;
+        public bool Enabled { get; set; } = false;
         /// <summary>被加固的注册表键（拒绝普通用户写入）。</summary>
         public List<string> Keys { get; set; } = new List<string>
         {
@@ -373,7 +396,7 @@ namespace LabGuard.Core.Config
     {
         public bool Enabled { get; set; } = true;
         /// <summary>程序文件被删除/被改时，从"系统级备份副本"自动恢复（默认开）。</summary>
-        public bool RestoreMissingFiles { get; set; } = true;
+        public bool RestoreMissingFiles { get; set; } = false;
         /// <summary>心跳上报地址（可选）：填了之后每 60 秒把本机状态 POST 给教师机上的监视器。</summary>
         public string ReportUrl { get; set; } = "";
         /// <summary>服务异常退出后自动重启电脑（sc failure … actions=reboot）。</summary>
@@ -381,9 +404,9 @@ namespace LabGuard.Core.Config
         /// <summary>代理进程被结束后自动重新拉起的间隔（秒）。</summary>
         public int AgentRestartSeconds { get; set; } = 10;
         /// <summary>隐藏安装目录（Hidden+System 属性；学生不易发现，可在设置里关闭）。</summary>
-        public bool HideInstallDir { get; set; } = true;
+        public bool HideInstallDir { get; set; } = false;
         /// <summary>关键文件校验失败时是否进入锁定。</summary>
-        public bool LockOnIntegrityFailure { get; set; } = true;
+        public bool LockOnIntegrityFailure { get; set; } = false;
     }
 
     /// <summary>
@@ -395,24 +418,24 @@ namespace LabGuard.Core.Config
     /// </summary>
     public class AntiTamperSettings
     {
-        public bool Enabled { get; set; } = true;
+        public bool Enabled { get; set; } = false;
         /// <summary>
         /// ① 给小助手/服务进程套 DACL：只有 SYSTEM 与管理员能终止，当前用户只剩"查询"权。
         /// 标准学生在任务管理器点「结束任务」会收到「拒绝访问」。
         /// </summary>
-        public bool HardenProcessDacl { get; set; } = true;
+        public bool HardenProcessDacl { get; set; } = false;
         /// <summary>
         /// ② 秒级复活：服务用进程句柄等待（WaitForSingleObject），小助手一退出就立刻重拉，
         /// 不再等 <c>Watchdog.AgentRestartSeconds</c> 的轮询间隔。
         /// </summary>
-        public bool FastRestart { get; set; } = true;
+        public bool FastRestart { get; set; } = false;
         /// <summary>
         /// ③ 兜底计划任务（SYSTEM，每分钟）：服务不在就 net start，小助手不在就拉起。
         /// 对付"学生把服务停掉/删掉"——服务和代理同时没了也还有这一条。
         /// </summary>
-        public bool ScheduledTaskGuard { get; set; } = true;
+        public bool ScheduledTaskGuard { get; set; } = false;
         /// <summary>④ 反复被杀时升级告警并记入 tamper 标记（老师能从日志/心跳看到）。</summary>
-        public bool AlertOnRepeatedKill { get; set; } = true;
+        public bool AlertOnRepeatedKill { get; set; } = false;
         /// <summary>④ 的阈值：这么多分钟内被杀这么多次才算"有人在搞事"。</summary>
         public int RepeatKillWindowMinutes { get; set; } = 5;
         /// <summary>④ 的次数阈值。</summary>
@@ -421,7 +444,7 @@ namespace LabGuard.Core.Config
         /// 顺手把常见的"杀进程工具"（Process Hacker / SystemInformer / taskkill 等）纳入违规软件拦截。
         /// 用现有的「进程/内核/注册表工具」清单，不新增一套匹配逻辑。
         /// </summary>
-        public bool BlockKillTools { get; set; } = true;
+        public bool BlockKillTools { get; set; } = false;
         /// <summary>
         /// 「老师暂停监控」期间**仍然守护进程**（小助手被杀照样拉起，只是以"已暂停"形态运行、不启用策略）。
         /// 真机事故教训（2026-10-08）：老师手势解锁断网遮罩 → 写入 paused.flag →
@@ -444,8 +467,12 @@ namespace LabGuard.Core.Config
     /// </summary>
     public class ServerSettings
     {
-        /// <summary>启用服务器统一管控。默认关：不配对、不开 = 纯单机版。</summary>
-        public bool Enabled { get; set; } = false;
+        /// <summary>
+        /// 启用服务器统一管控。**出厂开着**（它是"通道"不是"管控"）：这是客户端能被教师机激活的唯一通路。
+        /// 没导入配对文件 = 本项无效果（日志写着"已启用但未配对，继续单机管控"），所以开着不构成风险。
+        /// 关掉 = 这台机器永久退出服务器管辖（纯单机版）。
+        /// </summary>
+        public bool Enabled { get; set; } = true;
         /// <summary>服务器地址（host:port）。留空 = 用配对文件里的地址（教师机 IP + 8210）。</summary>
         public string Address { get; set; } = "";
         /// <summary>轮询间隔（秒）。默认 5：老师改完策略，全部学生机 ≤10 秒内生效。</summary>

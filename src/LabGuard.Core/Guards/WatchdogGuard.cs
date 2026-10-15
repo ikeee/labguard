@@ -54,7 +54,11 @@ namespace LabGuard.Core.Guards
             if (cfg == null) return false;
             if (!(cfg.Watchdog.Enabled || cfg.AntiTamper.Enabled)) return false;
             if (!paused) return true;
-            return cfg.AntiTamper.Enabled && cfg.AntiTamper.KeepAliveWhenPaused;
+            // 暂停期间是否守护小助手：只看那一项，**不再要求整个「防拆加固」组是开的**。
+            // 原因（2026-10-15 出厂全关）：全关之后老师一按暂停，如果这里还挂着 AntiTamper.Enabled，
+            // 小助手就再也没人拉起 —— 那正是 2026-10-08 真机事故的形态（托盘没了、老师点不到"启动监控"，
+            // 学生杀掉进程就永久脱管）。暂停的语义是"停管控策略"，不是"允许别人杀掉我的进程"。
+            return cfg.AntiTamper.KeepAliveWhenPaused;
         }
 
         /// <summary>

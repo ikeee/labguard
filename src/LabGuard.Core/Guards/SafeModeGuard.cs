@@ -25,6 +25,7 @@ namespace LabGuard.Core.Guards
             if (Context.Config.SafeMode.HideBootMenu)
             {
                 SystemActions.Run("bcdedit.exe", "/set {bootmgr} displaybootmenu no");
+                MarkApplied();
             }
         }
 
@@ -54,6 +55,7 @@ namespace LabGuard.Core.Guards
                 }
                 SystemActions.DeleteRegistryKey(RegistryHive.LocalMachine, SafeBootNetwork);
                 Log.Warn("已删除 SafeBoot\\Network（禁止带网络的安全模式）");
+                MarkApplied();
             }
             catch (Exception ex) { Log.Warn("处理 SafeBoot\\Network 失败：" + ex.Message); }
         }

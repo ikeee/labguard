@@ -86,10 +86,12 @@ namespace LabGuard.Core.Guards
             Log.Info("已应用浏览器组策略（禁止下载=" + b.BlockDownloads + "，小恐龙=" + b.BlockChromeDino + "）");
         }
 
-        private static void Set(string subKey, string name, object value)
+        private void Set(string subKey, string name, object value)
         {
             SystemActions.SetRegistryValue(RegistryHive.LocalMachine, subKey, name, value,
                 value is int ? RegistryValueKind.DWord : RegistryValueKind.String);
+            // 只在这里标"改过系统"：Apply() 里所有写操作都走它（全关时一条都不会走到 → 停止时不会去删别人的策略键）
+            MarkApplied();
         }
 
         /// <summary>用本程序的 Launcher 替换浏览器快捷方式（默认关闭，需显式开启）。</summary>

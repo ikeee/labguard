@@ -117,6 +117,7 @@ namespace LabGuard.Core.Guards
                         }
                         key.SetAccessControl(sec);
                         Log.Info("已加固注册表权限：" + fullKey);
+                        MarkApplied();
                     }
                 }
             }

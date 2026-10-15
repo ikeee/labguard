@@ -60,6 +60,10 @@ namespace LabGuard.Core.Guards
                 SystemActions.SetRegistryValue(RegistryHive.CurrentUser, ExplorerAdvanced, "HideFileExt", 1, RegistryValueKind.DWord);
             if (s.NoFolderOptions)
                 SystemActions.SetRegistryValue(RegistryHive.CurrentUser, ExplorerAdvanced, "NoFolderOptions", 1, RegistryValueKind.DWord);
+            // 只要写进过一条策略就算"改过系统"（OnStop 是按子项判断的，所以这里标了也不会误删）
+            if (s.HideTaskView || s.NoTrayContextMenu || s.DisableTaskManager || s.DisableRegistryTools ||
+                s.DisableCmd || s.DisableLockWorkstation || s.HideFileExtensions || s.NoFolderOptions)
+                MarkApplied();
             Log.Info("已应用任务栏/系统工具策略");
         }
 

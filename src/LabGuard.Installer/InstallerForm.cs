@@ -260,9 +260,15 @@ namespace LabGuard.Installer
 
         private TabPage TabOptions()
         {
-            var page = new TabPage("5. 功能开关（96 项，可逐项开关）") { Padding = new Padding(10) };
+            var page = new TabPage("5. 功能开关（可逐项开关；出厂全关）") { Padding = new Padding(10) };
             var top = new Panel { Dock = DockStyle.Top, Height = 76 };
-            var lbl = new Label { Text = "先套用一个预设，再按需逐项调整：", Left = 6, Top = 8, Width = 330 };
+            // 2026-10-15 起出厂口径 = **全关**：这一页默认一个都不勾（装上什么都不做），
+            // 由老师按需勾选，或点「套用预设」一步到位；教师机统一管控时也可以在服务端下发。
+            var lbl = new Label
+            {
+                Text = "出厂全关：不勾 = 这台机器什么都不做（可由教师机下发激活）。想先保命，至少勾「进程防拆加固」+「互相守护」。",
+                Left = 6, Top = 8, Width = 830, ForeColor = Color.FromArgb(176, 0, 32)
+            };
             _presetBox.Left = 6; _presetBox.Top = 30;
             foreach (Presets.Preset p in Presets.All()) _presetBox.Items.Add(p.Name);
             _presetBox.SelectedIndex = 0;
@@ -285,8 +291,9 @@ namespace LabGuard.Installer
             page.Controls.Add(_options);
             page.Controls.Add(top);
 
+            // 不再默认套用预设[0]：出厂全关意味着"装上什么都不做"，勾什么由老师决定。
+            // （想一步到位就点上面的「套用预设」；教师机统一管控时由服务端下发。）
             var cfg = new GuardConfig();
-            Presets.All()[0].Apply(cfg);
             _options.Refresh(cfg);
             _optionCount.Text = "共 " + _options.FieldCount + " 个开关";
             return page;
