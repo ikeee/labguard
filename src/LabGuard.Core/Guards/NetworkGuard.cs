@@ -93,7 +93,7 @@ namespace LabGuard.Core.Guards
 
         protected override void OnTick()
         {
-            // 经验值：开机后要给电子教室/网络足够时间，默认 120 秒内不判违规
+            // 有线固定 IP 机房默认 60 秒，给电子教室/网络留启动时间；可在设置里调整
             if ((DateTime.Now - _startedAt).TotalSeconds < Context.Config.StartDelaySeconds)
             {
                 SetStatus("预热中（" + Context.Config.StartDelaySeconds + "秒后开始检测）");

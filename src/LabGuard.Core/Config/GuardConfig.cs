@@ -26,8 +26,8 @@ namespace LabGuard.Core.Config
         /// 取 2 小时是折中——够长（不会在一节课中途自己恢复），又能在跨节课/午休后自愈。
         /// </summary>
         public int ResumeAfterMinutes { get; set; } = 120;
-        /// <summary>程序启动后多少秒才开始检测（避免开机误判，为 120 秒）。</summary>
-        public int StartDelaySeconds { get; set; } = 120;
+        /// <summary>程序启动后多少秒才开始检测（有线固定 IP 机房默认 60 秒；可在设置里改）。</summary>
+        public int StartDelaySeconds { get; set; } = 60;
 
         public ClassroomSettings Classroom { get; set; } = new ClassroomSettings();
         public NetworkSettings Network { get; set; } = new NetworkSettings();
@@ -220,7 +220,8 @@ namespace LabGuard.Core.Config
 
     public class FileCreationSettings
     {
-        public bool Enabled { get; set; } = true;
+        /// <summary>新文件/下载监控默认关闭：浏览器下载默认全部放行，需要时再由老师手动打开。</summary>
+        public bool Enabled { get; set; } = false;
         /// <summary>AllowAll / CppOnly / DenyAll（12 组开关里的三档）。</summary>
         public string Mode { get; set; } = "CppOnly";
         public List<string> WatchPaths { get; set; } = new List<string>
@@ -269,12 +270,12 @@ namespace LabGuard.Core.Config
     public class BrowserSettings
     {
         public bool Enabled { get; set; } = true;
-        public bool BlockDownloads { get; set; } = true;
-        public bool BlockSaveAs { get; set; } = true;
+        public bool BlockDownloads { get; set; } = false;
+        public bool BlockSaveAs { get; set; } = false;
         public bool BlockDevTools { get; set; } = true;
         public bool BlockChromeDino { get; set; } = true;
         public bool BlockEdgeSurf { get; set; } = true;
-        public bool BlockIeDownload { get; set; } = true;
+        public bool BlockIeDownload { get; set; } = false;
         /// <summary>首页/导航站（留空 = 不改学生浏览器主页）。</summary>
         public string Homepage { get; set; } = "";
         /// <summary>用 LabGuard.Launcher 替换浏览器快捷方式（默认关；开启后点浏览器会先经过本程序）。</summary>

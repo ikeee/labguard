@@ -1,6 +1,6 @@
 # LabGuard
 
-**当前版本：v0.07**（2026-10-09，[全部版本](https://github.com/ikeee/labguard/releases)）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
+**当前版本：v0.07.1**（2026-10-22，[全部版本](https://github.com/ikeee/labguard/releases)）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
 
 > **English TL;DR** — LabGuard is an open-source, self-healing policy guard for Windows PCs in school computer labs
 > (.NET Framework 4.8). It protects the classroom-management client (TopDomain / Red Spider / Ruijie cloud class)
@@ -119,7 +119,7 @@ LabGuard-Setup-vX.XX.exe --silent --password "你的密码123" [--config presets
 | 课堂软件关键服务停止 | 自动 `StartService`（极域 `TopDomainClient*`、噢易教学 `MMPC`、云桌面 `VoiClient`…可自行增删） |
 | 极域频道/自动登录参数被改 | 检测并回写合法值 |
 | 噢易云桌面服务器地址被改 | 监控 `HKLM\SOFTWARE\VoiClient\client\gtserver`：填了期望值就严格写回，留空则只在明显非法时报告（不猜着写） |
-| 拔网线 / 禁用网卡 | `NetworkGuard.IsDisconnected()`：网卡变 Down / IP 清空 / `0.0.0.0` / APIPA `169.254.*`，**持续 20 秒**确认后告警（开机 120 秒预热，避免误判；默认只提示，可选锁屏/关机） |
+| 拔网线 / 禁用网卡 | `NetworkGuard.IsDisconnected()`：网卡变 Down / IP 清空 / `0.0.0.0` / APIPA `169.254.*`，**持续 20 秒**确认后告警（有线固定 IP 机房默认 60 秒预热，避免误判；可调到 0；默认只提示，可选锁屏/关机） |
 | 断网**全屏遮罩**（屏保式） | 纯深色底 + 大字提示「网络已断开」+ 具体原因 + 机位号 + 已断开时长（可在设置里改成"随机底图"）；**吞掉所有键**，但**插回网线 10 秒内自动消失**（不需要老师）；两条老师通道：按 `Pause` 后 `↑↑↓↓←→←→`（**全程不解除硬锁，最可靠**），或连按 5 次 `Esc` + 密码（解除后监控暂停）；
 可在设置里选"只要手势 / 只要密码 / 双通道（默认）"。`LabGuard.Agent.exe --preview-mask 8` 可先预览。
 **遮罩上默认不提示解锁方式**（遮罩是给学生看的，把 `Pause + ↑↑↓↓←→←→` 印上去等于把钥匙挂在锁上），
@@ -133,11 +133,11 @@ LabGuard-Setup-vX.XX.exe --silent --password "你的密码123" [--config presets
 | 小游戏（扫雷/纸牌/…/Chrome 小恐龙/Edge 冲浪） | 进程拦截 + `Image File Execution Options\Debugger=null` + 浏览器组策略 |
 | 任务管理器 / 注册表 / cmd | 组策略键 + 窗口标题拦截（可逐项开关） |
 | 任务视图（虚拟桌面）与 Win 键 | `ShowTaskViewButton=0` + 低级键盘钩子吞掉 Win 键 |
-| 新 exe/reg/bat/zip… 文件 | `FileSystemWatcher` 监控下载目录与根目录，三档模式（全部允许 / 仅 C++ / 全部禁止） |
+| 新 exe/reg/bat/zip… 文件 | `FileSystemWatcher` 监控下载目录与根目录，三档模式（全部允许 / 仅 C++ / 全部禁止）；**v0.07.1 默认关闭，下载默认全部放行** |
 | USB 存储设备 | `usbstor` 驱动 `Start=4`（键鼠保留），被改回即告警并重新禁用 |
 | **上网管控（可选三档，见 §1.5）** | ① 不控（默认）② **本地 hosts 黑名单**（内置 75 条 + 自定义，纯本机）③ **集中 DNS 锁定**（可选，配合教师机 AdGuard：DNS 被改即 `netsh` 改回、关闭 Chrome/Edge/Firefox/Win11 的 **DoH**、带 AdGuard 存活探针） |
 | 下载站/网盘/游戏站 | **默认关闭**（有集中 DNS 就不需要）。开启时：hosts 受管区块（ 75 条清单 + 自定义）、隐藏、被删被改即恢复；**不开也保护 hosts**：ACL 收紧为普通用户只读 + **内容守候**（学生哪怕用管理员权限往里写映射，也在 20 秒内被还原并记日志） |
-| 浏览器下载/另存为/开发者工具/小恐龙/冲浪 | Chrome/Edge/Firefox/IE 组策略（不碰浏览器本体） |
+| 浏览器下载/另存为/开发者工具/小恐龙/冲浪 | Chrome/Edge/Firefox/IE 组策略（不碰浏览器本体）；**下载与另存为默认放行（含 Edge 截图下载），小恐龙和 Edge 冲浪默认禁用** |
 | 带网络的安全模式 | 删除 `SafeBoot\Network`（删除前导出 `.reg` 备份，退出/卸载时还原） |
 | 机位标识（**不改系统壁纸**） | 只在程序自己的断网遮罩上显示"计算机名后 6 位"，不影响学生机桌面 |
 | 自我保护 | 服务守护（代理被结束自动拉起）、关键文件 SHA256 校验、暂停标记防互相打架、注册表与目录 ACL 加固 |
@@ -257,7 +257,7 @@ docs/screenshots/            界面截图（由程序 --screenshot 自己渲染�
 下面这些图**不是手工截屏，是程序自己渲染出来的**，所以永远不会和代码不同步：
 
 ```bat
-LabGuard.Settings.exe --screenshot D:\shots        :: 14 个设置分组
+LabGuard.Settings.exe --screenshot D:\shots        :: 15 个设置分组
 LabGuard.Settings.exe --screenshot-mask D:\mask.png :: 断网全屏遮罩
 LabGuard.Settings.exe --screenshot-lock D:\lock.png :: 全屏锁定屏
 LabGuard.Installer.exe --screenshot D:\shots        :: 安装向导 6 页
@@ -359,7 +359,7 @@ LabGuard.Settings.exe --screenshot-mask D:\mask-hint.png --with-hint
 左侧分组导航（带"已改 N 项"标记）+ 右上搜索 + 只看已改动。**没有任何隐藏开关**：自检会核对每个配置项都能在界面上找到（见第 5 节）。
 
 <details>
-<summary><b>展开全部 14 个分组</b></summary>
+<summary><b>展开全部 15 个分组</b></summary>
 
 **0、总体（3 项）**
 
@@ -381,7 +381,7 @@ LabGuard.Settings.exe --screenshot-mask D:\mask-hint.png --with-hint
 
 <img src="docs/screenshots/settings-05-process-block.png" width="860">
 
-**5、新文件 / 下载监控（6 项）**
+**5、新文件 / 下载监控（6 项；默认关闭，需要时手动打开）**
 
 <img src="docs/screenshots/settings-06-file-creation.png" width="860">
 
@@ -416,6 +416,10 @@ LabGuard.Settings.exe --screenshot-mask D:\mask-hint.png --with-hint
 **13、互相守护与自我保护（7 项；含"隐藏安装目录"）**
 
 <img src="docs/screenshots/settings-14-watchdog.png" width="860">
+
+**14、进程防拆加固（7 项；服务/进程守护与杀进程工具拦截）**
+
+<img src="docs/screenshots/settings-15-process-antitamper.png" width="860">
 
 </details>
 

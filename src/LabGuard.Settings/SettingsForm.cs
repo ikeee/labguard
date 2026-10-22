@@ -14,7 +14,7 @@ namespace LabGuard.Settings
 {
     /// <summary>
     /// 设置程序：主体是 <see cref="SettingsPanel"/>（左侧分组导航 + 搜索 + 只看已改动 + 改动计数，
-    /// 内容由 <see cref="LabGuard.Core.Settings.SettingsCatalog"/> 驱动，共 14 组 / 96 项）。
+    /// 内容由 <see cref="LabGuard.Core.Settings.SettingsCatalog"/> 驱动，共 15 组 / 114 项）。
     /// 底部另有口令、导出/导入/恢复默认/保存。
     /// </summary>
     public class SettingsForm : Form
@@ -75,7 +75,7 @@ namespace LabGuard.Settings
         }
 
         // ------------------------------------------------------------------ 截图（文档/人工核对用）
-        /// <summary>把 14 个分组面板逐个渲染成 PNG（不修改配置）。</summary>
+        /// <summary>把全部分组面板逐个渲染成 PNG（不修改配置）。</summary>
         public List<string> RenderScreenshots(string outDir)
         {
             var saved = new List<string>();

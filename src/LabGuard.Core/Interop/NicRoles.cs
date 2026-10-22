@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using LabGuard.Core.Config;
@@ -168,9 +169,25 @@ namespace LabGuard.Core.Interop
                 string ip;
                 if (HasUsableIpv4(nic, out ip)) result.Add(nic);
             }
+            if (result.Count > 0)
+            {
+                reason = "自动选中 " + result.Count + " 个有 IP 的物理网卡（没有默认网关）" + fallbackNote;
+                return result;
+            }
+
+            // 冷启动/开机前拔线：网卡可能是 Down、没有网关也没有可用 IP。
+            // 此时必须把物理网卡本身留作判据，否则 watchedTotal=0，
+            // NetworkGuard 永远判定不了断网（插回网线也不会恢复监控）。
+            // 有线优先；无线只在没有有线网卡时兜底。
+            foreach (NetworkInterface nic in candidates
+                .OrderByDescending(n => IsWiredType(n.NetworkInterfaceType))
+                .ThenBy(n => n.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                result.Add(nic);
+            }
             reason = result.Count > 0
-                ? "自动选中 " + result.Count + " 个有 IP 的物理网卡（没有默认网关）" + fallbackNote
-                : "没有找到可判定的联网网卡（本机可能确实没网）";
+                ? "冷启动没有在线网卡，已选中 " + result.Count + " 个物理网卡作为离线判据（插回网线后自动恢复）" + fallbackNote
+                : "没有找到可判定的物理网卡（本机可能没有网卡）";
             return result;
         }
 

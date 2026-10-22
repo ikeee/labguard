@@ -91,7 +91,7 @@ namespace LabGuard.Core.Settings
         private static void ApplyCommon(GuardConfig c)
         {
             c.Enabled = true;
-            c.StartDelaySeconds = 120;
+            c.StartDelaySeconds = 60;
             c.Classroom.Enabled = true;
             c.Classroom.ResumeWhenSuspended = true;
             c.Classroom.RelaunchWhenKilled = true;
@@ -123,7 +123,8 @@ namespace LabGuard.Core.Settings
             c.Network.ShutdownOnViolation = false;
             c.ProcessBlock.Enabled = true;
             c.ProcessBlock.Action = "Kill";
-            c.FileCreation.Enabled = true;
+            // 默认允许所有浏览器下载；需要“新文件/下载监控”时由老师手动打开。
+            c.FileCreation.Enabled = false;
             c.FileCreation.Mode = "CppOnly";
             c.FileCreation.Action = "Delete";
             c.Usb.Enabled = true;
@@ -131,6 +132,11 @@ namespace LabGuard.Core.Settings
             c.Hosts.Enabled = false;
             c.Hosts.ProtectFileAcl = true;
             c.Browser.Enabled = true;
+            c.Browser.BlockDownloads = false;
+            c.Browser.BlockSaveAs = false;
+            c.Browser.BlockIeDownload = false;
+            c.Browser.BlockChromeDino = true;
+            c.Browser.BlockEdgeSurf = true;
             c.Shell.Enabled = true;
             c.SafeMode.Enabled = true;
             c.Site.ShowMachineNumber = true;

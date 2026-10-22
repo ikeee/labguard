@@ -48,7 +48,7 @@ namespace LabGuard.Core.Settings
             list.Add(Bool("0、总体", "Enabled", "启用监控（总开关）",
                 "关掉后所有模块停止，系统设置会被还原（等于「老师暂停」状态）", c => c.Enabled, (c, v) => c.Enabled = (bool)v));
             list.Add(Number("0、总体", "StartDelaySeconds", "开机后延迟开始检测（秒）",
-                "经验值 120 秒：等电子教室/网络稳定后再判定，避免开机误报", 0, 3600,
+                "有线固定 IP 机房默认 60 秒：等电子教室/网络稳定后再判定，避免开机误报；可调到 0", 0, 3600,
                 c => c.StartDelaySeconds, (c, v) => c.StartDelaySeconds = (int)v));
             list.Add(Number("0、总体", "ResumeAfterMinutes", "暂停后自动恢复监控（分钟）",
                 "0 = 不自动恢复；例如填 45 = 老师暂停后 45 分钟自动重新开启", 0, 1440,
@@ -282,9 +282,10 @@ namespace LabGuard.Core.Settings
             list.Add(Bool("8、浏览器管控", "Browser.Enabled", "启用浏览器策略（本组总开关）", null,
                 c => c.Browser.Enabled, (c, v) => c.Browser.Enabled = (bool)v));
             list.Add(Bool("8、浏览器管控", "Browser.BlockDownloads", "禁止浏览器下载文件",
-                "Chrome/Edge/Firefox/IE；学生仍可在浏览器复制图片再粘贴",
+                "默认关闭（允许所有下载，含 Edge 截图）；需要时手动打开",
                 c => c.Browser.BlockDownloads, (c, v) => c.Browser.BlockDownloads = (bool)v));
-            list.Add(Bool("8、浏览器管控", "Browser.BlockSaveAs", "禁止另存为", null,
+            list.Add(Bool("8、浏览器管控", "Browser.BlockSaveAs", "禁止另存为",
+                "默认关闭；避免影响 Edge 截图后保存",
                 c => c.Browser.BlockSaveAs, (c, v) => c.Browser.BlockSaveAs = (bool)v));
             list.Add(Bool("8、浏览器管控", "Browser.BlockDevTools", "禁止开发者工具", null,
                 c => c.Browser.BlockDevTools, (c, v) => c.Browser.BlockDevTools = (bool)v));

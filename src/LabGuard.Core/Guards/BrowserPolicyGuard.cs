@@ -26,6 +26,8 @@ namespace LabGuard.Core.Guards
         private const string WindowsDnsClient = @"SOFTWARE\Policies\Microsoft\Windows NT\DNSClient";
         private const string IeZones = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\3";
         private const string IeRestrict = @"SOFTWARE\Policies\Microsoft\Internet Explorer\Restrictions";
+        private bool _appliedIeDownload;
+        private bool _appliedIeSaveAs;
 
         protected override void OnStart()
         {
@@ -41,6 +43,11 @@ namespace LabGuard.Core.Guards
                 ok &= Convert.ToInt32(SystemActions.GetRegistryValue(RegistryHive.LocalMachine, Chrome, "AllowDinosaurEasterEgg") ?? 1) == 0;
             if (b.BlockDownloads)
                 ok &= Convert.ToInt32(SystemActions.GetRegistryValue(RegistryHive.LocalMachine, Chrome, "DownloadRestrictions") ?? 0) == 3;
+            if (b.BlockIeDownload)
+            {
+                ok &= Convert.ToInt32(SystemActions.GetRegistryValue(RegistryHive.LocalMachine, IeZones, "1803") ?? 0) == 3;
+                ok &= Convert.ToInt32(SystemActions.GetRegistryValue(RegistryHive.LocalMachine, IeZones, "2200") ?? 1) == 0;
+            }
             if (!ok)
             {
                 Context.Report(Name, "你违规修改了注册表的禁止下载/禁止游戏项！现在助手强制恢复！", ViolationAction.Notify);
@@ -58,13 +65,20 @@ namespace LabGuard.Core.Guards
                 Set(Edge, "DownloadRestrictions", 3);
                 Set(Firefox, "DisableDownloads", 1);
                 Set(Firefox, "BlockAboutDownloads", 1);
+            }
+            // IE 的下载限制单独可控：BlockDownloads 打开时一并覆盖 IE；
+            // BlockIeDownload 单独打开时只封 IE，不影响 Chrome/Edge。
+            if (b.BlockDownloads || b.BlockIeDownload)
+            {
                 Set(IeZones, "1803", 3);
                 Set(IeZones, "2200", 0);
+                _appliedIeDownload = true;
             }
             if (b.BlockSaveAs)
             {
                 Set(IeRestrict, "NoBrowserSaveAs", 1);
                 Set(Edge, "SaveAs", 0);
+                _appliedIeSaveAs = true;
             }
             if (b.BlockDevTools) Set(Edge, "DeveloperToolsAvailability", 2);
             if (b.BlockChromeDino) Set(Chrome, "AllowDinosaurEasterEgg", 0);
@@ -156,12 +170,19 @@ namespace LabGuard.Core.Guards
         protected override void OnStop()
         {
             if (Context == null) return;
-            foreach (string k in new[] { Chrome, Edge, Firefox, IeRestrict })
+            foreach (string k in new[] { Chrome, Edge, Firefox })
                 SystemActions.DeleteRegistryKey(RegistryHive.LocalMachine, k);
+            if (_appliedIeSaveAs)
+                SystemActions.DeleteRegistryKey(RegistryHive.LocalMachine, IeRestrict);
             SystemActions.DeleteRegistryKey(RegistryHive.LocalMachine, FirefoxDoh);
             SystemActions.DeleteRegistryValue(RegistryHive.LocalMachine, WindowsDnsClient, "DoHPolicy");
-            foreach (string v in new[] { "1803", "2200" })
-                SystemActions.DeleteRegistryValue(RegistryHive.LocalMachine, IeZones, v);
+            if (_appliedIeDownload)
+            {
+                foreach (string v in new[] { "1803", "2200" })
+                    SystemActions.DeleteRegistryValue(RegistryHive.LocalMachine, IeZones, v);
+            }
+            _appliedIeDownload = false;
+            _appliedIeSaveAs = false;
             Log.Info("已移除浏览器组策略");
         }
     }

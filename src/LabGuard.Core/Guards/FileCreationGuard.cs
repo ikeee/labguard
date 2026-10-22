@@ -78,6 +78,12 @@ namespace LabGuard.Core.Guards
         private void OnRenamed(object sender, RenamedEventArgs e) => Handle(e.FullPath);
         private void OnChanged(object sender, FileSystemEventArgs e) => Handle(e.FullPath);
 
+        /// <summary>只有显式 Delete 才删除文件；Notify/Lock 等动作必须保留文件。</summary>
+        public static bool ShouldDelete(string action)
+        {
+            return string.Equals(action, "Delete", StringComparison.OrdinalIgnoreCase);
+        }
+
         private void Handle(string fullPath)
         {
             try
@@ -110,11 +116,13 @@ namespace LabGuard.Core.Guards
                             : "本机禁止下载/安装软件；如确有需要，请老师用密码暂停管控。";
 
                 _strikes++;
-                bool delete = string.Equals(cfg.Action, "Delete", StringComparison.OrdinalIgnoreCase);
-                SystemActions.DeleteFile(fullPath);
-                Context.Report(Name, message + "  刚刚删除文件：" + fullPath,
+                bool delete = ShouldDelete(cfg.Action);
+                if (delete) SystemActions.DeleteFile(fullPath);
+                Context.Report(Name, message + (delete ? "  刚刚删除文件：" : "  仅提示，文件保留：") + fullPath,
                     _strikes >= 2 ? ViolationAction.Lock : ViolationAction.Notify, ext);
-                SetStatus("已删除违规新文件（累计 " + _strikes + " 次）");
+                SetStatus(delete
+                    ? "已删除违规新文件（累计 " + _strikes + " 次）"
+                    : "已提示违规新文件（已保留，累计 " + _strikes + " 次）");
             }
             catch (Exception ex) { Log.Debug("处理新文件事件失败：" + ex.Message); }
         }

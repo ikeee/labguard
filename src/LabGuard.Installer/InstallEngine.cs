@@ -180,7 +180,7 @@ namespace LabGuard.Installer
                         k.SetValue("UninstallString", "\"" + Path.Combine(InstallDir, "LabGuard.Uninstall.exe") + "\"");
                         k.SetValue("InstallLocation", InstallDir);
                         k.SetValue("Publisher", "LabGuard Replica");
-                        k.SetValue("DisplayVersion", "1.0.0");
+                    k.SetValue("DisplayVersion", LabGuard.Core.AppInfo.Version);
                     }
                 }
             }

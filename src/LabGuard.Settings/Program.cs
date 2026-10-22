@@ -25,7 +25,7 @@ namespace LabGuard.Settings
 
             Log.MinLevel = LogLevel.Info;
             GuardConfig config = ConfigStore.Load();
-            // --screenshot <目录>：把 14 个设置面板渲染成 PNG（供文档/人工核对），不修改配置
+            // --screenshot <目录>：把全部分组面板渲染成 PNG（供文档/人工核对），不修改配置
             int shotIndex = Array.IndexOf(args ?? new string[0], "--screenshot");
             if (shotIndex >= 0)
             {

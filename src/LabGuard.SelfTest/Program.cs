@@ -45,6 +45,7 @@ namespace LabGuard.SelfTest
             TestDnsRule();
             TestSettingsCoverage();
             TestNicRoles();
+            TestStandaloneDefaults();
             TestEngineDryRun();
 
             Console.WriteLine();
@@ -732,6 +733,70 @@ namespace LabGuard.SelfTest
                 System.Linq.Enumerable.Select(LabGuard.Core.Interop.NicRoles.Usable(),
                     n => n.Name + (cfg.Network.ExcludedInterfaces.Any(p =>
                         (n.Name + " " + n.Description).IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0) ? "(忽略)" : ""))));
+        }
+
+        /// <summary>
+        /// v0.07.1 单机版默认值回归：下载默认放行、游戏默认禁用、预热 60 秒、
+        /// 以及 Notify 动作不得删除文件。
+        /// </summary>
+        private static void TestStandaloneDefaults()
+        {
+            Console.WriteLine("[8.1] 单机版 v0.07.1 默认值");
+            var cfg = new GuardConfig();
+            Check("有线固定 IP 默认预热 60 秒", cfg.StartDelaySeconds == 60, cfg.StartDelaySeconds + " 秒");
+            Check("浏览器下载默认放行", !cfg.Browser.BlockDownloads);
+            Check("浏览器另存为默认放行", !cfg.Browser.BlockSaveAs);
+            Check("IE 下载默认放行", !cfg.Browser.BlockIeDownload);
+            Check("Chrome 小恐龙仍默认禁用", cfg.Browser.BlockChromeDino);
+            Check("Edge 冲浪仍默认禁用", cfg.Browser.BlockEdgeSurf);
+            Check("新文件/下载监控默认关闭", !cfg.FileCreation.Enabled);
+            Check("Notify 动作不删除文件", !FileCreationGuard.ShouldDelete("Notify"));
+            Check("Delete 动作仍会删除文件", FileCreationGuard.ShouldDelete("Delete"));
+
+            // 干跑浏览器策略：默认只能看到游戏限制，不应写任何 DownloadRestrictions。
+            bool oldDryRun = Log.DryRun;
+            try
+            {
+                Log.DryRun = true;
+                int auditStart = SystemActions.AuditTrail.Count;
+                var browser = new BrowserPolicyGuard();
+                browser.Start(new GuardContext(cfg, AppDomain.CurrentDomain.BaseDirectory, null));
+                browser.Stop();
+                var browserAudit = SystemActions.AuditTrail.Skip(auditStart).ToList();
+                Check("默认浏览器策略不写下载限制",
+                    !browserAudit.Any(x => x.IndexOf("DownloadRestrictions", StringComparison.OrdinalIgnoreCase) >= 0));
+                Check("默认浏览器策略仍写 Chrome 小恐龙限制",
+                    browserAudit.Any(x => x.IndexOf("AllowDinosaurEasterEgg = 0", StringComparison.OrdinalIgnoreCase) >= 0));
+                Check("默认浏览器策略仍写 Edge 冲浪限制",
+                    browserAudit.Any(x => x.IndexOf("AllowSurfGame = 0", StringComparison.OrdinalIgnoreCase) >= 0));
+            }
+            finally
+            {
+                Log.DryRun = oldDryRun;
+            }
+
+            // 冷启动兜底：本机若恰好有 Down 网卡，把其它网卡全部排除，
+            // 验证仍能从离线网卡中选出判据，而不是返回空集合。
+            var all = NicRoles.Usable().ToList();
+            var down = all.FirstOrDefault(n => n.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up &&
+                n.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback &&
+                n.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Tunnel);
+            if (down == null)
+            {
+                Console.WriteLine("  [SKIP] 本机没有可用的 Down 网卡，冷启动兜底由真机部署验证");
+            }
+            else
+            {
+                var coldCfg = new GuardConfig();
+                coldCfg.Network.WatchWiredOnly = false;
+                coldCfg.Network.ExcludedInterfaces.Clear();
+                foreach (var nic in all.Where(n => n.Name != down.Name)) coldCfg.Network.ExcludedInterfaces.Add(nic.Name);
+                string reason;
+                var selected = NicRoles.SelectWatched(coldCfg, out reason);
+                Check("冷启动无在线网卡时仍选中 Down 网卡作为判据",
+                    selected.Any(n => string.Equals(n.Name, down.Name, StringComparison.OrdinalIgnoreCase)),
+                    reason);
+            }
         }
 
         private static void TestEngineDryRun()
