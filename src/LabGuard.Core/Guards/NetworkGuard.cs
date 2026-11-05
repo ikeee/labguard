@@ -176,10 +176,7 @@ namespace LabGuard.Core.Guards
                 else
                 {
                     Log.Info("网络已恢复，遮罩与响鸣标记复位");
-                    _unpluggedSince = DateTime.MinValue;
-                    _unpluggedStamp = 0;
-                    _maskShown = false;
-                    _soundDone = false;
+                    ResetAfterRestore();
                     SetStatus("正常");
                 }
             }
@@ -283,14 +280,43 @@ namespace LabGuard.Core.Guards
         /// </summary>
         public bool IsWatchedRestored()
         {
-            if (_watchedNames.Count == 0) return NicRoles.HasUsableLocalIp(Context.Config);
-            foreach (NetworkInterface nic in NicRoles.Usable())
+            bool restored;
+            if (_watchedNames.Count == 0)
             {
-                if (!_watchedNames.Contains(nic.Name)) continue;
-                string ip;
-                if (NicRoles.HasUsableIpv4(nic, out ip) && ip != NicRoles.IcsGatewayIp) return true;
+                restored = NicRoles.HasUsableLocalIp(Context.Config);
             }
-            return false;
+            else
+            {
+                restored = false;
+                foreach (NetworkInterface nic in NicRoles.Usable())
+                {
+                    if (!_watchedNames.Contains(nic.Name)) continue;
+                    string ip;
+                    if (NicRoles.HasUsableIpv4(nic, out ip) && ip != NicRoles.IcsGatewayIp)
+                    {
+                        restored = true;
+                        break;
+                    }
+                }
+            }
+
+            if (restored)
+            {
+                // 遮罩的 NetWatch 线程会先看到网络恢复并关闭窗口；
+                // 这里必须同步复位，否则紧接着再次拔线时 _maskShown 仍为 true，
+                // ShowMaskIfNeeded() 会直接 return，第二次遮罩永远不弹。
+                ResetAfterRestore();
+                Log.Info("遮罩检测到网络已恢复，断网状态已复位（可再次触发遮罩）");
+            }
+            return restored;
+        }
+
+        private void ResetAfterRestore()
+        {
+            _unpluggedSince = DateTime.MinValue;
+            _unpluggedStamp = 0;
+            _maskShown = false;
+            _soundDone = false;
         }
 
         /// <summary>断网判定（纯函数，便于自检）：网卡 Down / IP 空 / 0.0.0.0 / APIPA。</summary>

@@ -46,6 +46,7 @@ namespace LabGuard.SelfTest
             TestSettingsCoverage();
             TestNicRoles();
             TestStandaloneDefaults();
+            TestMaskRearm();
             TestEngineDryRun();
 
             Console.WriteLine();
@@ -373,7 +374,8 @@ namespace LabGuard.SelfTest
                 !LabGuard.Core.Guards.WatchdogGuard.ShouldKeepAgentAlive(null, true));
 
             // 用可控时间断言（真机教训：一天刷了 480 行同样的 INFO，老师根本不会看）
-            string tmpStamp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "labguard-selftest-pausehint.stamp");
+            string tmpStamp = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                "labguard-selftest-pausehint.stamp");
             if (System.IO.File.Exists(tmpStamp)) System.IO.File.Delete(tmpStamp);
             Check("暂停提示有限频：10 分钟内只提示一次，到点再提示",
                 LabGuard.Core.Guards.WatchdogGuard.PauseHintDue(10, new DateTime(2026, 1, 1, 10, 0, 0), tmpStamp) &&
@@ -554,7 +556,16 @@ namespace LabGuard.SelfTest
 
             // ---- A5：拉起目标锚定"缺失的那个" ----
             string tmp = Path.Combine(Path.GetTempPath(), "lg-redteam-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(tmp);
+            try
+            {
+                Directory.CreateDirectory(tmp);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // 某些受限执行环境会拒绝在 %TEMP% 下建目录；自检只要求一个可写临时目录。
+                tmp = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "lg-redteam-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(tmp);
+            }
             try
             {
                 string studentExe = Path.Combine(tmp, "Student.exe");
@@ -736,12 +747,12 @@ namespace LabGuard.SelfTest
         }
 
         /// <summary>
-        /// v0.07.1 单机版默认值回归：下载默认放行、游戏默认禁用、预热 60 秒、
+        /// v0.07.2 单机版默认值回归：下载默认放行、游戏默认禁用、预热 60 秒、
         /// 以及 Notify 动作不得删除文件。
         /// </summary>
         private static void TestStandaloneDefaults()
         {
-            Console.WriteLine("[8.1] 单机版 v0.07.1 默认值");
+            Console.WriteLine("[8.1] 单机版 v0.07.2 默认值");
             var cfg = new GuardConfig();
             Check("有线固定 IP 默认预热 60 秒", cfg.StartDelaySeconds == 60, cfg.StartDelaySeconds + " 秒");
             Check("浏览器下载默认放行", !cfg.Browser.BlockDownloads);
@@ -797,6 +808,52 @@ namespace LabGuard.SelfTest
                     selected.Any(n => string.Equals(n.Name, down.Name, StringComparison.OrdinalIgnoreCase)),
                     reason);
             }
+        }
+
+        /// <summary>
+        /// 回归：遮罩由 NetWatch 自动关闭后，NetworkGuard 必须复位 _maskShown /
+        /// _unpluggedStamp，否则学生插回网线后立即再次拔线不会弹第二次遮罩。
+        /// </summary>
+        private static void TestMaskRearm()
+        {
+            Console.WriteLine("[8.2] 断网遮罩二次触发状态复位");
+            var cfg = new GuardConfig { StartDelaySeconds = 0 };
+            cfg.Network.WatchWiredOnly = false;   // 测试取本机当前在线的判据网卡（CI 可能是 WLAN）
+            string reason;
+            var watched = NicRoles.SelectWatched(cfg, out reason);
+            var guard = new NetworkGuard();
+            guard.AttachContext(new GuardContext(cfg, AppDomain.CurrentDomain.BaseDirectory, null));
+
+            var namesField = typeof(NetworkGuard).GetField("_watchedNames",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var names = (HashSet<string>)namesField.GetValue(guard);
+            names.Clear();
+            foreach (var nic in watched) names.Add(nic.Name);
+
+            // 模拟第一次断网已经弹过遮罩、计时器仍在运行。
+            var maskField = typeof(NetworkGuard).GetField("_maskShown",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var stampField = typeof(NetworkGuard).GetField("_unpluggedStamp",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var sinceField = typeof(NetworkGuard).GetField("_unpluggedSince",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var soundField = typeof(NetworkGuard).GetField("_soundDone",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            maskField.SetValue(guard, true);
+            stampField.SetValue(guard, System.Diagnostics.Stopwatch.GetTimestamp());
+            sinceField.SetValue(guard, DateTime.Now.AddMinutes(-2));
+            soundField.SetValue(guard, true);
+
+            bool restored = guard.IsWatchedRestored();
+            if (!restored)
+            {
+                Console.WriteLine("  [SKIP] 本机没有已恢复可用 IP 的判据网卡，二次弹遮罩由真机验收");
+                return;
+            }
+
+            Check("网络恢复后 _maskShown 已复位", !(bool)maskField.GetValue(guard));
+            Check("网络恢复后 _unpluggedStamp 已清零", (long)stampField.GetValue(guard) == 0);
+            Check("网络恢复后 _soundDone 已复位", !(bool)soundField.GetValue(guard));
         }
 
         private static void TestEngineDryRun()

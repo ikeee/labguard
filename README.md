@@ -1,6 +1,6 @@
 # LabGuard
 
-**当前版本：v0.07.1**（2026-10-22，[全部版本](https://github.com/ikeee/labguard/releases)）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
+**当前版本：v0.07.2**（2026-11-05，[全部版本](https://github.com/ikeee/labguard/releases)）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
 
 > **English TL;DR** — LabGuard is an open-source, self-healing policy guard for Windows PCs in school computer labs
 > (.NET Framework 4.8). It protects the classroom-management client (TopDomain / Red Spider / Ruijie cloud class)
@@ -133,7 +133,7 @@ LabGuard-Setup-vX.XX.exe --silent --password "你的密码123" [--config presets
 | 小游戏（扫雷/纸牌/…/Chrome 小恐龙/Edge 冲浪） | 进程拦截 + `Image File Execution Options\Debugger=null` + 浏览器组策略 |
 | 任务管理器 / 注册表 / cmd | 组策略键 + 窗口标题拦截（可逐项开关） |
 | 任务视图（虚拟桌面）与 Win 键 | `ShowTaskViewButton=0` + 低级键盘钩子吞掉 Win 键 |
-| 新 exe/reg/bat/zip… 文件 | `FileSystemWatcher` 监控下载目录与根目录，三档模式（全部允许 / 仅 C++ / 全部禁止）；**v0.07.1 默认关闭，下载默认全部放行** |
+| 新 exe/reg/bat/zip… 文件 | `FileSystemWatcher` 监控下载目录与根目录，三档模式（全部允许 / 仅 C++ / 全部禁止）；**v0.07.1 起默认关闭，下载默认全部放行** |
 | USB 存储设备 | `usbstor` 驱动 `Start=4`（键鼠保留），被改回即告警并重新禁用 |
 | **上网管控（可选三档，见 §1.5）** | ① 不控（默认）② **本地 hosts 黑名单**（内置 75 条 + 自定义，纯本机）③ **集中 DNS 锁定**（可选，配合教师机 AdGuard：DNS 被改即 `netsh` 改回、关闭 Chrome/Edge/Firefox/Win11 的 **DoH**、带 AdGuard 存活探针） |
 | 下载站/网盘/游戏站 | **默认关闭**（有集中 DNS 就不需要）。开启时：hosts 受管区块（ 75 条清单 + 自定义）、隐藏、被删被改即恢复；**不开也保护 hosts**：ACL 收紧为普通用户只读 + **内容守候**（学生哪怕用管理员权限往里写映射，也在 20 秒内被还原并记日志） |

@@ -1,5 +1,17 @@
 # 更新记录
 
+## v0.07.2（2026-11-05）
+
+> 单机版连续断网修复补丁；继承 v0.07.1 的冷启动检测、60 秒预热和下载默认放行。
+
+### 修复：第二次拔网线不再弹遮罩
+
+- 遮罩由 `DisconnectMaskForm` 的 NetWatch 自动关闭时，`NetworkGuard` 之前只在**下一次 10 秒轮询**看到恢复后才复位 `_maskShown`；
+  如果学生插回网线后立即再次拔线，`_maskShown` 仍为 `true`，`ShowMaskIfNeeded()` 直接返回，第二次遮罩不会出现。
+- 现在 `IsWatchedRestored()` 在确认判据网卡恢复时立即复位 `_maskShown`、`_unpluggedStamp`、`_unpluggedSince`、`_soundDone`；
+  下一次断网会重新走完整的 20 秒确认并再次弹遮罩。
+- 自检新增 `[8.2]`：网络恢复后上述状态必须全部复位。
+
 ## v0.07.1（2026-10-22）
 
 > 单机版解冻补丁；服务器版与 v0.07 原 tag/Release 不变。
