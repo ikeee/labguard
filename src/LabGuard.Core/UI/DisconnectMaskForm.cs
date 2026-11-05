@@ -180,6 +180,7 @@ namespace LabGuard.Core.UI
                     InputLock.KeepAlive();
                     _tickCount++;
                     if (_tickCount % 5 == 1) Log.Info("[遮罩心跳] #" + _tickCount + " netRestored=" + _netRestored);
+                    if (_tickCount % 5 == 1 && !_teacherDialogOpen) ForceTopMost(false);
                     if (_netRestored) { AutoClose("网络已恢复"); return; }
                     UpdateBottomLine();
                 }
@@ -308,9 +309,33 @@ namespace LabGuard.Core.UI
             WindowState = FormWindowState.Maximized;
             TopMost = true;
             CursorLock.Hide();
+            ForceTopMost(true);
             _tick.Start();
             InstallHook();
             StartNetWatch();
+        }
+
+        /// <summary>
+        /// WinForms 的 TopMost 在部分全屏/无边框游戏上仍可能被抢 Z 序。
+        /// 首次显示时强制置顶并尝试切前台；之后每 5 秒只重新置顶，不反复激活窗口。
+        /// 独占全屏仍可能覆盖普通窗口，因此游戏进程拦截仍是更可靠的兜底。
+        /// </summary>
+        private void ForceTopMost(bool activate)
+        {
+            if (!Visible || Handle == IntPtr.Zero) return;
+            try
+            {
+                uint flags = NativeMethods.SwpNoMove | NativeMethods.SwpNoSize | NativeMethods.SwpShowWindow;
+                if (!activate) flags |= NativeMethods.SwpNoActivate;
+                NativeMethods.SetWindowPos(Handle, NativeMethods.HwndTopMost, 0, 0, 0, 0, flags);
+                if (activate)
+                {
+                    NativeMethods.BringWindowToTop(Handle);
+                    NativeMethods.SetForegroundWindow(Handle);
+                    Log.Info("[遮罩] 已强制置顶并尝试切到前台");
+                }
+            }
+            catch (Exception ex) { Log.Debug("[遮罩] 强制置顶失败：" + ex.Message); }
         }
 
         // ------------------------------------------------------------------ 网络恢复检测（后台线程）

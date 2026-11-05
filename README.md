@@ -1,6 +1,6 @@
 # LabGuard
 
-**当前版本：v0.07.2**（2026-11-05，[全部版本](https://github.com/ikeee/labguard/releases)）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
+**当前版本：v0.07.3**（2026-11-05，[全部版本](https://github.com/ikeee/labguard/releases)）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
 
 > **English TL;DR** — LabGuard is an open-source, self-healing policy guard for Windows PCs in school computer labs
 > (.NET Framework 4.8). It protects the classroom-management client (TopDomain / Red Spider / Ruijie cloud class)
@@ -119,7 +119,7 @@ LabGuard-Setup-vX.XX.exe --silent --password "你的密码123" [--config presets
 | 课堂软件关键服务停止 | 自动 `StartService`（极域 `TopDomainClient*`、噢易教学 `MMPC`、云桌面 `VoiClient`…可自行增删） |
 | 极域频道/自动登录参数被改 | 检测并回写合法值 |
 | 噢易云桌面服务器地址被改 | 监控 `HKLM\SOFTWARE\VoiClient\client\gtserver`：填了期望值就严格写回，留空则只在明显非法时报告（不猜着写） |
-| 拔网线 / 禁用网卡 | `NetworkGuard.IsDisconnected()`：网卡变 Down / IP 清空 / `0.0.0.0` / APIPA `169.254.*`，**持续 20 秒**确认后告警（有线固定 IP 机房默认 60 秒预热，避免误判；可调到 0；默认只提示，可选锁屏/关机） |
+| 拔网线 / 禁用网卡 | `NetworkGuard.IsDisconnected()`：网卡变 Down / IP 清空 / `0.0.0.0` / APIPA `169.254.*`；前两次持续 **20 秒**确认，第 3 次起同一次登录内缩短为 **5 秒**；稳定联网 10 分钟后复位（有线固定 IP 机房默认 60 秒预热，可调到 0；默认只提示，可选锁屏/关机） |
 | 断网**全屏遮罩**（屏保式） | 纯深色底 + 大字提示「网络已断开」+ 具体原因 + 机位号 + 已断开时长（可在设置里改成"随机底图"）；**吞掉所有键**，但**插回网线 10 秒内自动消失**（不需要老师）；两条老师通道：按 `Pause` 后 `↑↑↓↓←→←→`（**全程不解除硬锁，最可靠**），或连按 5 次 `Esc` + 密码（解除后监控暂停）；
 可在设置里选"只要手势 / 只要密码 / 双通道（默认）"。`LabGuard.Agent.exe --preview-mask 8` 可先预览。
 **遮罩上默认不提示解锁方式**（遮罩是给学生看的，把 `Pause + ↑↑↓↓←→←→` 印上去等于把钥匙挂在锁上），

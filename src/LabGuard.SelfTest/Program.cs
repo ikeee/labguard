@@ -747,12 +747,12 @@ namespace LabGuard.SelfTest
         }
 
         /// <summary>
-        /// v0.07.2 单机版默认值回归：下载默认放行、游戏默认禁用、预热 60 秒、
+        /// v0.07.3 单机版默认值回归：下载默认放行、游戏默认禁用、预热 60 秒、
         /// 以及 Notify 动作不得删除文件。
         /// </summary>
         private static void TestStandaloneDefaults()
         {
-            Console.WriteLine("[8.1] 单机版 v0.07.2 默认值");
+            Console.WriteLine("[8.1] 单机版 v0.07.3 默认值");
             var cfg = new GuardConfig();
             Check("有线固定 IP 默认预热 60 秒", cfg.StartDelaySeconds == 60, cfg.StartDelaySeconds + " 秒");
             Check("浏览器下载默认放行", !cfg.Browser.BlockDownloads);
@@ -763,6 +763,10 @@ namespace LabGuard.SelfTest
             Check("新文件/下载监控默认关闭", !cfg.FileCreation.Enabled);
             Check("Notify 动作不删除文件", !FileCreationGuard.ShouldDelete("Notify"));
             Check("Delete 动作仍会删除文件", FileCreationGuard.ShouldDelete("Delete"));
+            Check("前两次断网仍用 20 秒确认",
+                NetworkGuard.ConfirmSecondsFor(0) == 20 && NetworkGuard.ConfirmSecondsFor(1) == 20);
+            Check("第 3 次起断网改用 5 秒确认",
+                NetworkGuard.ConfirmSecondsFor(2) == 5 && NetworkGuard.ConfirmSecondsFor(3) == 5);
 
             // 干跑浏览器策略：默认只能看到游戏限制，不应写任何 DownloadRestrictions。
             bool oldDryRun = Log.DryRun;

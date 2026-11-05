@@ -32,6 +32,23 @@ namespace LabGuard.Core.Interop
         [DllImport("user32.dll")]
         internal static extern bool IsWindowVisible(IntPtr hWnd);
 
+        // ---- 遮罩强制置顶 / 切前台（对抗全屏游戏抢占 Z 序） ----
+        internal static readonly IntPtr HwndTopMost = new IntPtr(-1);
+        internal const uint SwpNoSize = 0x0001;
+        internal const uint SwpNoMove = 0x0002;
+        internal const uint SwpNoActivate = 0x0010;
+        internal const uint SwpShowWindow = 0x0040;
+
+        [DllImport("user32.dll")]
+        internal static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+            int x, int y, int cx, int cy, uint flags);
+
+        [DllImport("user32.dll")]
+        internal static extern bool BringWindowToTop(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        internal static extern bool SetForegroundWindow(IntPtr hWnd);
+
         [DllImport("user32.dll")]
         internal static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
 

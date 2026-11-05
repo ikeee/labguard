@@ -27,6 +27,12 @@ namespace LabGuard.Core.Guards
 
         /// <summary>断网持续这么多秒才判定（避免交换机抖动/无线漫游误报）。</summary>
         private const int DisconnectConfirmSeconds = 20;
+        /// <summary>同一次登录里第 3 次确认断网起，缩短为 5 秒确认（前两次仍给 20 秒）。</summary>
+        private const int RepeatDisconnectConfirmSeconds = 5;
+        /// <summary>已确认 2 次后，下一次（第 3 次）开始使用重复断网阈值。</summary>
+        private const int RepeatDisconnectAfterCount = 2;
+        /// <summary>连续稳定联网 10 分钟后，重复断网计数复位。</summary>
+        private const int RepeatResetMinutes = 10;
 
         private class Baseline
         {
@@ -54,6 +60,9 @@ namespace LabGuard.Core.Guards
         }
         private bool _maskShown;
         private bool _soundDone;
+        private int _confirmedDisconnects;
+        private bool _episodeCounted;
+        private DateTime _stableSince = DateTime.MinValue;
         private bool _pausedByTeacher;
         private string _downReason = "";
         public bool PausedByTeacher => _pausedByTeacher;
@@ -153,17 +162,32 @@ namespace LabGuard.Core.Guards
             {
                 // 红队 D1：确认计时用单调时钟（Stopwatch）——墙钟回拨骗不了它；
                 // _unpluggedSince（墙钟）只留作遮罩上的"已断开时长"展示。
-                if (_unpluggedStamp == 0) { _unpluggedStamp = System.Diagnostics.Stopwatch.GetTimestamp(); _unpluggedSince = DateTime.Now; }
+                if (_unpluggedStamp == 0)
+                {
+                    _unpluggedStamp = System.Diagnostics.Stopwatch.GetTimestamp();
+                    _unpluggedSince = DateTime.Now;
+                    _stableSince = DateTime.MinValue;
+                    _episodeCounted = false;
+                }
                 double elapsed = MonoSeconds() - (_unpluggedStamp / (double)System.Diagnostics.Stopwatch.Frequency);
+                int confirmSeconds = ConfirmSecondsFor(_confirmedDisconnects);
 
-                if (elapsed >= DisconnectConfirmSeconds)
+                if (elapsed >= confirmSeconds)
                 {
                     Context.Report(Name, "检测到本机网络已断开（" + _downReason + "）：请插回网线或启用网络连接。",
                         HostAction(), string.Join("/", _watchedNames) + " 已断开 " + (int)elapsed + " 秒");
                     ShowMaskIfNeeded(_unpluggedSince);
                     MaybeSound(_unpluggedSince);
+                    if (!_episodeCounted)
+                    {
+                        _episodeCounted = true;
+                        _confirmedDisconnects++;
+                        Log.Warn("已确认第 " + _confirmedDisconnects +
+                                 " 次断网（本次确认阈值 " + confirmSeconds + " 秒）");
+                    }
                 }
-                SetStatus("断网 " + (int)elapsed + " 秒（" + watchedDown + "/" + watchedTotal + " 个判据网卡断开）");
+                SetStatus("断网 " + (int)elapsed + " 秒（确认阈值 " + confirmSeconds +
+                          " 秒，" + watchedDown + "/" + watchedTotal + " 个判据网卡断开）");
                 return;   // 断网期间不做 IP 比对（读到的是无效值）
             }
 
@@ -179,6 +203,16 @@ namespace LabGuard.Core.Guards
                     ResetAfterRestore();
                     SetStatus("正常");
                 }
+            }
+
+            // 长时间稳定联网后清掉重复断网计数；老师正常上课时不会一直处于"重犯模式"。
+            if (_confirmedDisconnects > 0 && _stableSince != DateTime.MinValue &&
+                (DateTime.Now - _stableSince).TotalMinutes >= RepeatResetMinutes)
+            {
+                Log.Info("网络已稳定 " + RepeatResetMinutes + " 分钟，重复断网计数复位（原 " +
+                         _confirmedDisconnects + " 次）");
+                _confirmedDisconnects = 0;
+                _stableSince = DateTime.MinValue;
             }
 
             // 改 IP / 改网关检测（只对被判据网卡）
@@ -317,6 +351,19 @@ namespace LabGuard.Core.Guards
             _unpluggedStamp = 0;
             _maskShown = false;
             _soundDone = false;
+            _episodeCounted = false;
+            _stableSince = DateTime.Now;
+        }
+
+        /// <summary>
+        /// 前两次断网各 20 秒确认；第 3 次起（此前已确认 2 次）使用 5 秒确认。
+        /// 独立成纯函数，方便自检固定住这个口径。
+        /// </summary>
+        public static int ConfirmSecondsFor(int confirmedDisconnects)
+        {
+            return confirmedDisconnects >= RepeatDisconnectAfterCount
+                ? RepeatDisconnectConfirmSeconds
+                : DisconnectConfirmSeconds;
         }
 
         /// <summary>断网判定（纯函数，便于自检）：网卡 Down / IP 空 / 0.0.0.0 / APIPA。</summary>
