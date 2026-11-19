@@ -16,3 +16,6 @@ paused.flag
 files.sha256
 config.json
 HANDOFF.md
+
+# 私有构建资料（解锁组合只进发布二进制，不进公开源码/仓库）
+src/LabGuard.Core/Assets/private-unlock.profile

@@ -129,22 +129,21 @@ namespace LabGuard.Core.Config
         /// </summary>
         public string DisconnectMaskBackground { get; set; } = "Plain";
         /// <summary>
-        /// 老师解除遮罩的方式：Gesture = 按键手势（Pause → ↑↑↓↓←→←→）；
+        /// 老师解除遮罩的方式：Gesture = 私有按键通道；
         /// Password = 连按 5 次 Esc + 密码；Both = 两条通道都可用（默认）。
-        /// 取舍见 <c>docs/06</c>：手势**更可靠**（全程不必解除硬锁、不弹输入框），但**保密性差于密码**
-        /// （Konami Code 是公开梗，且泄露后不像密码那样能改）。故默认保留双通道。
+        /// 私有通道的具体组合不进入公开源码、文档或界面。
         /// </summary>
         public string TeacherUnlockMode { get; set; } = "Both";
-        /// <summary>手势的激活键：Pause（默认，即 Pause/Break）/ ScrollLock。**只能是单键**（Ctrl+Pause 区分不出来）。</summary>
-        public string UnlockGestureArmKey { get; set; } = "Pause";
-        /// <summary>解锁序列，逗号分隔，只接受 U/D/L/R（上/下/左/右）。默认 ↑↑↓↓←→←→。</summary>
-        public string UnlockGestureSequence { get; set; } = "U,U,D,D,L,R,L,R";
-        /// <summary>激活后必须在此秒数内输完，超时自动重置（1~60 秒）。</summary>
-        public int UnlockGestureWindowSeconds { get; set; } = 5;
-        /// <summary>是否在遮罩上显示手势进度点。**学生也看得见**，默认关。</summary>
+        /// <summary>兼容旧配置字段；当前公开版本不读取具体组合。</summary>
+        public string UnlockGestureArmKey { get; set; } = "";
+        /// <summary>兼容旧配置字段；当前公开版本不读取具体组合。</summary>
+        public string UnlockGestureSequence { get; set; } = "";
+        /// <summary>私有钥匙松开后输入序列的窗口（秒）。</summary>
+        public int UnlockGestureWindowSeconds { get; set; } = 2;
+        /// <summary>兼容旧配置字段；公开版本不显示进度点。</summary>
         public bool UnlockGestureFeedback { get; set; } = false;
         /// <summary>
-        /// 遮罩上是否**提示老师怎么解除**（手势序列 / 连按 Esc 输密码）。默认**关**。
+        /// 兼容旧配置字段；公开版本不显示任何解锁提示。
         /// 关键：遮罩是给学生看的，把解锁方式印上去等于把钥匙挂在锁上 ——
         /// 学生照着屏幕就能解。关掉后遮罩只说"恢复网络后自动消失"，老师按自己的方式解除即可。
         /// 只有新手老师培训期才值得临时打开（方法另见 docs/06 与设置程序里的说明）。

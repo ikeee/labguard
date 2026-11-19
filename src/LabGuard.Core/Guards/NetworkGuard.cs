@@ -9,15 +9,11 @@ using Microsoft.Win32;
 namespace LabGuard.Core.Guards
 {
     /// <summary>
-    /// 网络与防火墙守护（核心模块）：
-    /// · 断网：网卡变 Down / IP 清空 / 0.0.0.0 / APIPA(169.254.*)，持续 N 秒确认 →
-    ///   提示 + 可选全屏遮罩（插回网线自动消失）+ 可选限次响鸣；
-    /// · 改 IP：与启动基线比对后强制还原（DHCP 的机器改回 source=dhcp）；
-    /// · 防火墙：发现"阻止所有传入连接"被打开 → netsh 强制关闭。
+    /// 网络与防火墙守护。
     ///
-    /// 关键：只把"真正代表本机联网"的网卡当作判据（见 <see cref="NicRoles"/>）。
-    /// 一体机机房"有线为主 + 无线常开做热点"时，热点网卡（192.168.137.1 / Wi-Fi Direct）
-    /// 既不该让断网判定失效，也不该被误判成断网。
+    /// 断网判定以“物理网卡链路是否完整”为准：网卡必须 Up、拿到 IPv4、
+    /// 有默认网关，才算在线。网卡枚举为空也视为离线，避免开机前拔线时
+    /// 因为 Windows 还没枚举出网卡而漏判。
     /// </summary>
     public sealed class NetworkGuard : GuardBase
     {
@@ -25,16 +21,14 @@ namespace LabGuard.Core.Guards
         public override bool Enabled => Context?.Config.Network.Enabled ?? false;
         protected override int IntervalMs => 10000;
 
-        /// <summary>断网持续这么多秒才判定（避免交换机抖动/无线漫游误报）。</summary>
-        private const int DisconnectConfirmSeconds = 20;
-        /// <summary>同一次登录里第 3 次确认断网起，缩短为 5 秒确认（前两次仍给 20 秒）。</summary>
+        /// <summary>第一次、第二次断网各确认 60 秒；第三次起缩短为 5 秒。</summary>
+        private const int DisconnectConfirmSeconds = 60;
         private const int RepeatDisconnectConfirmSeconds = 5;
-        /// <summary>已确认 2 次后，下一次（第 3 次）开始使用重复断网阈值。</summary>
         private const int RepeatDisconnectAfterCount = 2;
-        /// <summary>连续稳定联网 10 分钟后，重复断网计数复位。</summary>
+        /// <summary>连续稳定在线 10 分钟后，重复断网计数复位。</summary>
         private const int RepeatResetMinutes = 10;
 
-        private class Baseline
+        private sealed class LinkSnapshot
         {
             public string Name;
             public string Ip;
@@ -43,21 +37,25 @@ namespace LabGuard.Core.Guards
             public bool Dhcp;
             public bool WasUp;
             public bool Watched;
+
+            public bool HasGateway
+            {
+                get { return !string.IsNullOrEmpty(Gateway) && Gateway != "0.0.0.0"; }
+            }
+
+            public bool IsOnline
+            {
+                get { return IsLinkOnline(WasUp, Ip, Gateway); }
+            }
         }
 
-        private readonly List<Baseline> _baseline = new List<Baseline>();
+        private readonly List<LinkSnapshot> _baseline = new List<LinkSnapshot>();
         private readonly HashSet<string> _watchedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private DateTime _startedAt;
         private DateTime _unpluggedSince = DateTime.MinValue;
-        private long _unpluggedStamp;       // 红队 D1：断网计时用单调时钟（Stopwatch 时间戳），回拨墙钟骗不过
-        private DateTime _lastWall = DateTime.MinValue;   // 时间跳变感知（红队 D1）
+        private long _unpluggedStamp;
+        private DateTime _lastWall = DateTime.MinValue;
         private double _lastStamp;
-
-        /// <summary>单调时钟秒数（net48 没有 TickCount64，用 Stopwatch 时间戳换算）。</summary>
-        private static double MonoSeconds()
-        {
-            return System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
-        }
         private bool _maskShown;
         private bool _soundDone;
         private int _confirmedDisconnects;
@@ -65,103 +63,141 @@ namespace LabGuard.Core.Guards
         private DateTime _stableSince = DateTime.MinValue;
         private bool _pausedByTeacher;
         private string _downReason = "";
+
         public bool PausedByTeacher => _pausedByTeacher;
 
-        /// <summary>
-        /// 即时归因：把"判据网卡为什么算断开"翻译成给学生看的**具体原因**，
-        /// 而不是只说一句"违规"——经验上，写明检测到什么能明显减少重复违规。
-        /// </summary>
-        public static string DescribeDown(bool nicExists, bool wasUp, string ip)
+        private static double MonoSeconds()
         {
-            if (!nicExists) return "判据网卡已消失（网卡被禁用或被拔掉）";
+            return System.Diagnostics.Stopwatch.GetTimestamp() /
+                   (double)System.Diagnostics.Stopwatch.Frequency;
+        }
+
+        public static string DescribeDown(bool nicExists, bool wasUp, string ip, string gateway = null)
+        {
+            if (!nicExists) return "判据网卡已消失（网卡被禁用或已被识别不到）";
             if (!wasUp) return "网卡已断开（网线被拔掉，或网卡被禁用）";
             if (string.IsNullOrEmpty(ip) || ip == "0.0.0.0") return "IP 已被清空（没拿到地址）";
-            if (ip.StartsWith("169.254.")) return "只拿到 169.254.* 自动地址（网线未接好，或 DHCP 不可达）";
+            if (ip.StartsWith("169.254.", StringComparison.Ordinal))
+                return "只拿到 169.254.* 自动地址（网线未接好，或 DHCP 不可达）";
+            if (string.IsNullOrEmpty(gateway) || gateway == "0.0.0.0") return "没有默认网关（网络不完整）";
             return "网络不可用";
         }
 
         protected override void OnStart()
         {
             _startedAt = DateTime.Now;
+            _stableSince = _startedAt;
+            RefreshBaseline();
+
+            Log.Info("网络基线：" + string.Join("；", _baseline.Where(b => b.Ip != null)
+                .Select(b => b.Name + "=" + b.Ip + (b.Dhcp ? "(DHCP)" : "") + (b.Watched ? "[判据]" : ""))));
+            Log.Info("断网判据网卡：" + (_watchedNames.Count == 0 ? "（无）" : string.Join(", ", _watchedNames)));
+
+            // 先做一轮探测：如果开机前就拔了网线，计时从服务启动即开始，
+            // 不再等 Windows 慢慢初始化网卡或等下一次 10 秒轮询。
+            try { OnTick(); }
+            catch (Exception ex) { Log.Warn("网络首次探测失败：" + ex.Message); }
+        }
+
+        private void RefreshBaseline()
+        {
+            _baseline.Clear();
+            _watchedNames.Clear();
+
             string reason;
-            List<NetworkInterface> watched = NicRoles.SelectWatched(Context.Config, out reason);
-            foreach (NetworkInterface nic in watched) _watchedNames.Add(nic.Name);
+            foreach (NetworkInterface nic in NicRoles.SelectWatched(Context.Config, out reason))
+                _watchedNames.Add(nic.Name);
 
             foreach (NetworkInterface nic in NicRoles.Usable())
             {
-                Baseline b = Snapshot(nic);
-                if (b == null) continue;
-                b.Watched = _watchedNames.Contains(b.Name);
-                _baseline.Add(b);
+                LinkSnapshot snapshot = Snapshot(nic);
+                if (snapshot == null) continue;
+                snapshot.Watched = _watchedNames.Contains(snapshot.Name);
+                _baseline.Add(snapshot);
             }
-            Log.Info("网络基线：" + string.Join("；", _baseline.Where(b => b.Ip != null)
-                .Select(b => b.Name + "=" + b.Ip + (b.Dhcp ? "(DHCP)" : "") + (b.Watched ? "[判据]" : ""))));
-            Log.Info("断网判据网卡：" + (_watchedNames.Count == 0 ? "（无）" : string.Join(", ", _watchedNames)) + " —— " + reason);
-            SetStatus("监控 " + _watchedNames.Count + " 个网卡");
+
+            if (_watchedNames.Count == 0)
+                Log.Warn("没有找到物理网卡判据；按离线处理，等待网卡枚举恢复");
+            else
+                Log.Info("网络判据：" + string.Join(", ", _watchedNames) + " —— " + reason);
         }
 
         protected override void OnTick()
         {
-            // 有线固定 IP 机房默认 60 秒，给电子教室/网络留启动时间；可在设置里调整
-            if ((DateTime.Now - _startedAt).TotalSeconds < Context.Config.StartDelaySeconds)
+            DateTime wall = DateTime.Now;
+            double mono = MonoSeconds();
+            if (_lastWall != DateTime.MinValue)
             {
-                SetStatus("预热中（" + Context.Config.StartDelaySeconds + "秒后开始检测）");
-                return;
+                double wallStep = (wall - _lastWall).TotalSeconds;
+                double monoStep = mono - _lastStamp;
+                if (Math.Abs(wallStep - monoStep) > 60)
+                    Context.Report(Name, "检测到系统时间被改动（墙钟与运行时钟偏差 "
+                        + (int)(wallStep - monoStep) + " 秒）——可能是在对抗断网确认计时。",
+                        ViolationAction.Notify, "时间跳变");
+            }
+            _lastWall = wall;
+            _lastStamp = mono;
+
+            Dictionary<string, LinkSnapshot> current = SnapshotAll();
+
+            // 冷启动时 NicRoles 可能第一轮返回空；后续一旦 Windows 枚举出网卡，
+            // 必须自动补上判据，而不是把 watchedTotal=0 当成“没有断网”。
+            if (_watchedNames.Count == 0 || !_baseline.Any(b => b.Watched))
+            {
+                RefreshBaseline();
+                current = SnapshotAll();
             }
 
-            // 红队 D1：时间跳变感知——墙钟与单调时钟的步进差超过 60 秒，说明有人动了系统时间
-            // （学生拔网线+回拨时钟曾能让"20 秒确认"永远走不到）。
-            {
-                DateTime wall = DateTime.Now;
-                double mono = MonoSeconds();
-                if (_lastWall != DateTime.MinValue)
-                {
-                    double wallStep = (wall - _lastWall).TotalSeconds;
-                    double monoStep = mono - _lastStamp;
-                    if (Math.Abs(wallStep - monoStep) > 60)
-                        Context.Report(Name, "检测到系统时间被改动（墙钟与运行时钟偏差 "
-                            + (int)(wallStep - monoStep) + " 秒）——可能是在对抗断网确认计时。",
-                            ViolationAction.Notify, "时间跳变");
-                }
-                _lastWall = wall;
-                _lastStamp = mono;
-            }
-
-            var current = new Dictionary<string, Baseline>(StringComparer.OrdinalIgnoreCase);
-            foreach (NetworkInterface nic in NicRoles.Usable())
-            {
-                Baseline b = Snapshot(nic);
-                if (b != null) current[b.Name] = b;
-            }
-
-            int watchedTotal = 0, watchedDown = 0;
+            int watchedTotal = 0;
+            int watchedDown = 0;
             _downReason = "";
-            foreach (Baseline baseLine in _baseline)
+
+            foreach (LinkSnapshot baseLine in _baseline)
             {
                 if (!baseLine.Watched) continue;
                 watchedTotal++;
-                Baseline now;
-                bool down = !current.TryGetValue(baseLine.Name, out now) || IsDisconnected(now.Ip, now.WasUp);
-                if (down)
+                LinkSnapshot now;
+                bool exists = current.TryGetValue(baseLine.Name, out now);
+                bool online = exists && now != null && now.IsOnline;
+                if (!online)
                 {
                     watchedDown++;
                     if (_downReason.Length == 0)
                     {
-                        bool exists = current.ContainsKey(baseLine.Name);
                         _downReason = baseLine.Name + " " +
-                            DescribeDown(exists, exists && now != null && now.WasUp, exists && now != null ? now.Ip : null);
+                            DescribeDown(exists, exists && now != null && now.WasUp,
+                                exists && now != null ? now.Ip : null,
+                                exists && now != null ? now.Gateway : null);
                     }
                 }
             }
 
+            bool noPhysical = current.Count == 0 || watchedTotal == 0;
             bool allDown = watchedTotal > 0 && watchedDown == watchedTotal;
             bool anyDown = watchedDown > 0;
-            bool violationNow = Context.Config.Network.DisconnectRequireAllDown ? allDown : anyDown;
+            bool violationNow;
+            if (noPhysical)
+            {
+                violationNow = Context.Config.Network.DetectDisconnected;
+                if (_downReason.Length == 0) _downReason = "没有找到可判定的物理网卡（枚举为空）";
+            }
+            else
+            {
+                violationNow = Context.Config.Network.DisconnectRequireAllDown ? allDown : anyDown;
+            }
+
+            bool inWarmup = (DateTime.Now - _startedAt).TotalSeconds <
+                            Math.Max(0, Context.Config.StartDelaySeconds);
+            // 预热只推迟“正常联网时的 IP/网关基线校正”；已经断网时不能
+            // 被预热挡住，否则开机前拔线仍会等 60 秒后再开始计时。
+            if (inWarmup && !violationNow)
+            {
+                SetStatus("预热中（" + Context.Config.StartDelaySeconds + "秒后做 IP/网关校正）");
+                return;
+            }
 
             if (violationNow && Context.Config.Network.DetectDisconnected)
             {
-                // 红队 D1：确认计时用单调时钟（Stopwatch）——墙钟回拨骗不了它；
-                // _unpluggedSince（墙钟）只留作遮罩上的"已断开时长"展示。
                 if (_unpluggedStamp == 0)
                 {
                     _unpluggedStamp = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -169,13 +205,15 @@ namespace LabGuard.Core.Guards
                     _stableSince = DateTime.MinValue;
                     _episodeCounted = false;
                 }
-                double elapsed = MonoSeconds() - (_unpluggedStamp / (double)System.Diagnostics.Stopwatch.Frequency);
-                int confirmSeconds = ConfirmSecondsFor(_confirmedDisconnects);
 
+                double elapsed = MonoSeconds() - (_unpluggedStamp /
+                                                   (double)System.Diagnostics.Stopwatch.Frequency);
+                int confirmSeconds = ConfirmSecondsFor(_confirmedDisconnects);
                 if (elapsed >= confirmSeconds)
                 {
-                    Context.Report(Name, "检测到本机网络已断开（" + _downReason + "）：请插回网线或启用网络连接。",
-                        HostAction(), string.Join("/", _watchedNames) + " 已断开 " + (int)elapsed + " 秒");
+                    Context.Report(Name, "检测到本机网络已断开（" + _downReason +
+                        "）：请插回网线或启用网络连接。", HostAction(),
+                        string.Join("/", _watchedNames) + " 已断开 " + (int)elapsed + " 秒");
                     ShowMaskIfNeeded(_unpluggedSince);
                     MaybeSound(_unpluggedSince);
                     if (!_episodeCounted)
@@ -187,27 +225,26 @@ namespace LabGuard.Core.Guards
                     }
                 }
                 SetStatus("断网 " + (int)elapsed + " 秒（确认阈值 " + confirmSeconds +
-                          " 秒，" + watchedDown + "/" + watchedTotal + " 个判据网卡断开）");
-                return;   // 断网期间不做 IP 比对（读到的是无效值）
+                          " 秒，" + watchedDown + "/" + Math.Max(1, watchedTotal) + " 个判据网卡断开）");
+                return;
             }
 
             if (_unpluggedStamp != 0)
             {
-                if (anyDown)
+                if (anyDown && !Context.Config.Network.DisconnectRequireAllDown)
                 {
                     SetStatus("部分判据网卡断开（仍有链路，不算断网）");
                 }
                 else
                 {
-                    Log.Info("网络已恢复，遮罩与响鸣标记复位");
+                    Log.Info("网络已恢复，遮罩与响铃标记复位");
                     ResetAfterRestore();
                     SetStatus("正常");
                 }
             }
 
-            // 长时间稳定联网后清掉重复断网计数；老师正常上课时不会一直处于"重犯模式"。
             if (_confirmedDisconnects > 0 && _stableSince != DateTime.MinValue &&
-                (DateTime.Now - _stableSince).TotalMinutes >= RepeatResetMinutes)
+                ShouldResetRepeat(_confirmedDisconnects, DateTime.Now - _stableSince))
             {
                 Log.Info("网络已稳定 " + RepeatResetMinutes + " 分钟，重复断网计数复位（原 " +
                          _confirmedDisconnects + " 次）");
@@ -215,37 +252,36 @@ namespace LabGuard.Core.Guards
                 _stableSince = DateTime.MinValue;
             }
 
-            // 改 IP / 改网关检测（只对被判据网卡）
-            // 红队 D3：以前只比 IP——学生保留原 IP、只把网关改错/删掉默认路由，
-            // 就是"检测认为有网、实际全网不通"的零告警破坏。
             bool violation = false;
-            foreach (Baseline baseLine in _baseline)
+            if (!inWarmup)
             {
-                if (!baseLine.Watched) continue;
-                Baseline now;
-                if (!current.TryGetValue(baseLine.Name, out now)) continue;
-                if (now.Ip != null && baseLine.Ip != null && now.Ip != baseLine.Ip)
+                foreach (LinkSnapshot baseLine in _baseline)
                 {
-                    violation = true;
-                    Context.Report(Name, "本机 IP 被修改，原地址为：" + baseLine.Ip + "，现已强制恢复。",
-                        HostAction(), baseLine.Name);
-                    if (Context.Config.Network.RestoreOriginalIp) Restore(baseLine);
-                }
-                if (!string.IsNullOrEmpty(baseLine.Gateway) && now.Gateway != baseLine.Gateway)
-                {
-                    violation = true;
-                    Context.Report(Name, "默认网关被修改（" + (baseLine.Gateway ?? "（无）") + " → "
-                            + (now.Gateway ?? "（已删除）") + "），网络实际已不通。",
-                        HostAction(), baseLine.Name);
-                    if (Context.Config.Network.RestoreOriginalIp) Restore(baseLine);
+                    if (!baseLine.Watched) continue;
+                    LinkSnapshot now;
+                    if (!current.TryGetValue(baseLine.Name, out now)) continue;
+                    if (now.Ip != null && baseLine.Ip != null && now.Ip != baseLine.Ip)
+                    {
+                        violation = true;
+                        Context.Report(Name, "本机 IP 被修改，原地址为：" + baseLine.Ip +
+                            "，现已强制恢复。", HostAction(), baseLine.Name);
+                        if (Context.Config.Network.RestoreOriginalIp) Restore(baseLine);
+                    }
+                    if (!string.IsNullOrEmpty(baseLine.Gateway) && now.Gateway != baseLine.Gateway)
+                    {
+                        violation = true;
+                        Context.Report(Name, "默认网关被修改（" + (baseLine.Gateway ?? "（无）") +
+                            " → " + (now.Gateway ?? "（已删除）") + "），网络实际已不通。",
+                            HostAction(), baseLine.Name);
+                        if (Context.Config.Network.RestoreOriginalIp) Restore(baseLine);
+                    }
                 }
             }
 
-            // 防火墙
             if (Context.Config.Network.ForceFirewallOff && FirewallEnabled())
             {
                 violation = true;
-                Context.Report(Name, "检测到防火墙被开启，可能影响课堂广播；已自动关闭。",
+                Context.Report(Name, "检测到防火墙被打开，可能影响课堂广播；已自动关闭。",
                     ViolationAction.Notify);
                 SystemActions.Run("netsh.exe", "advfirewall set allprofiles state off");
             }
@@ -253,7 +289,17 @@ namespace LabGuard.Core.Guards
             if (!violation) SetStatus("正常（判据 " + _watchedNames.Count + " 个网卡）");
         }
 
-        // ------------------------------------------------------------------ 断网遮罩 / 响鸣
+        private Dictionary<string, LinkSnapshot> SnapshotAll()
+        {
+            var current = new Dictionary<string, LinkSnapshot>(StringComparer.OrdinalIgnoreCase);
+            foreach (NetworkInterface nic in NicRoles.Usable())
+            {
+                LinkSnapshot snapshot = Snapshot(nic);
+                if (snapshot != null) current[snapshot.Name] = snapshot;
+            }
+            return current;
+        }
+
         private void ShowMaskIfNeeded(DateTime since)
         {
             if (!Context.Config.Network.DisconnectMask || _maskShown) return;
@@ -280,18 +326,18 @@ namespace LabGuard.Core.Guards
                 () =>
                 {
                     TimeSpan span = DateTime.Now - since;
-                    return "已断开 " + (int)span.TotalMinutes + " 分 " + span.Seconds + " 秒 · 插回网线后 10 秒内自动恢复";
+                    return "已断开 " + (int)span.TotalMinutes + " 分 " + span.Seconds + " 秒 · 插回网线后自动恢复";
                 },
                 IsWatchedRestored,
                 channel =>
                 {
-                    if (string.IsNullOrEmpty(channel)) channel = "密码";
+                    if (string.IsNullOrEmpty(channel)) channel = "管理员通道";
                     bool pause = Context.Config.Network.PauseMonitoringOnTeacherUnlock;
                     Context.Report(Name,
-                        pause ? ("老师用" + channel + "解除了断网遮罩，监控暂停。")
-                              : ("老师用" + channel + "解除了断网遮罩（按设置继续监控）。"),
-                        ViolationAction.Notify, "教师解锁");
-                    _pausedByTeacher = true;      // 本次断网不再重复弹遮罩
+                        pause ? "老师解除了断网遮罩，监控暂停。"
+                              : "老师解除了断网遮罩（按设置继续监控）。",
+                        ViolationAction.Notify, "老师解锁");
+                    _pausedByTeacher = true;
                 });
             Log.Warn("已弹出断网遮罩（机位 " + number + "）");
         }
@@ -305,40 +351,32 @@ namespace LabGuard.Core.Guards
             int times = Math.Max(1, n.DisconnectSoundTimes);
             int interval = Math.Max(200, n.DisconnectSoundIntervalMs);
             Context.Alert?.Beep(times, interval);
-            Log.Warn("断网持续 " + n.DisconnectSoundAfterSeconds + " 秒，已响鸣 " + times + " 次");
+            Log.Warn("断网持续 " + n.DisconnectSoundAfterSeconds + " 秒，已响铃 " + times + " 次");
         }
 
         /// <summary>
-        /// 遮罩用它判断"网线插回来了没有"：必须**判据网卡**恢复可用 IP 才算。
-        /// 不能只看"本机有没有 IP"——否则热点网卡的 192.168.137.1 会让遮罩误以为网络已恢复。
+        /// 遮罩自动消失前必须重新枚举网卡，并和 NetworkGuard 使用同一口径：
+        /// Up + IPv4 + 默认网关。
         /// </summary>
         public bool IsWatchedRestored()
         {
-            bool restored;
-            if (_watchedNames.Count == 0)
+            string reason;
+            List<NetworkInterface> watched = NicRoles.SelectWatched(Context.Config, out reason);
+            if (watched.Count == 0) return false;
+
+            bool anyOnline = false;
+            bool allOnline = true;
+            foreach (NetworkInterface nic in watched)
             {
-                restored = NicRoles.HasUsableLocalIp(Context.Config);
-            }
-            else
-            {
-                restored = false;
-                foreach (NetworkInterface nic in NicRoles.Usable())
-                {
-                    if (!_watchedNames.Contains(nic.Name)) continue;
-                    string ip;
-                    if (NicRoles.HasUsableIpv4(nic, out ip) && ip != NicRoles.IcsGatewayIp)
-                    {
-                        restored = true;
-                        break;
-                    }
-                }
+                string ip, gateway;
+                bool online = NicRoles.IsOnline(nic, out ip, out gateway);
+                if (online) anyOnline = true;
+                else allOnline = false;
             }
 
+            bool restored = Context.Config.Network.DisconnectRequireAllDown ? allOnline : anyOnline;
             if (restored)
             {
-                // 遮罩的 NetWatch 线程会先看到网络恢复并关闭窗口；
-                // 这里必须同步复位，否则紧接着再次拔线时 _maskShown 仍为 true，
-                // ShowMaskIfNeeded() 会直接 return，第二次遮罩永远不弹。
                 ResetAfterRestore();
                 Log.Info("遮罩检测到网络已恢复，断网状态已复位（可再次触发遮罩）");
             }
@@ -353,12 +391,10 @@ namespace LabGuard.Core.Guards
             _soundDone = false;
             _episodeCounted = false;
             _stableSince = DateTime.Now;
+            _pausedByTeacher = false;
         }
 
-        /// <summary>
-        /// 前两次断网各 20 秒确认；第 3 次起（此前已确认 2 次）使用 5 秒确认。
-        /// 独立成纯函数，方便自检固定住这个口径。
-        /// </summary>
+        /// <summary>前两次 60 秒；已确认两次后，从第三次起使用 5 秒。</summary>
         public static int ConfirmSecondsFor(int confirmedDisconnects)
         {
             return confirmedDisconnects >= RepeatDisconnectAfterCount
@@ -366,13 +402,28 @@ namespace LabGuard.Core.Guards
                 : DisconnectConfirmSeconds;
         }
 
-        /// <summary>断网判定（纯函数，便于自检）：网卡 Down / IP 空 / 0.0.0.0 / APIPA。</summary>
+        /// <summary>连续稳定在线满 10 分钟才复位重复断网计数。</summary>
+        public static bool ShouldResetRepeat(int confirmedDisconnects, TimeSpan stableFor)
+        {
+            return confirmedDisconnects > 0 && stableFor.TotalMinutes >= RepeatResetMinutes;
+        }
+
+        /// <summary>网卡链路是否完整：Up + 可用 IPv4 + 默认网关。</summary>
+        public static bool IsLinkOnline(bool nicUp, string ip, string gateway)
+        {
+            if (!nicUp || string.IsNullOrEmpty(ip)) return false;
+            if (ip == "0.0.0.0" || ip.StartsWith("169.254.", StringComparison.Ordinal)) return false;
+            if (ip == NicRoles.IcsGatewayIp) return false;
+            return !string.IsNullOrEmpty(gateway) && gateway != "0.0.0.0";
+        }
+
+        /// <summary>纯函数：旧逻辑兼容用；实际断网还要求默认网关。</summary>
         public static bool IsDisconnected(string ip, bool nicUp)
         {
             if (!nicUp) return true;
             if (string.IsNullOrEmpty(ip)) return true;
             if (ip == "0.0.0.0") return true;
-            return ip.StartsWith("169.254.");
+            return ip.StartsWith("169.254.", StringComparison.Ordinal);
         }
 
         private ViolationAction HostAction()
@@ -382,21 +433,21 @@ namespace LabGuard.Core.Guards
             return ViolationAction.Notify;
         }
 
-        private static Baseline Snapshot(NetworkInterface nic)
+        private static LinkSnapshot Snapshot(NetworkInterface nic)
         {
             try
             {
                 IPInterfaceProperties props = nic.GetIPProperties();
                 UnicastIPAddressInformation unicast = props.UnicastAddresses
                     .FirstOrDefault(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
-                GatewayIPAddressInformation gw = props.GatewayAddresses
+                GatewayIPAddressInformation gateway = props.GatewayAddresses
                     .FirstOrDefault(g => g.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
-                return new Baseline
+                return new LinkSnapshot
                 {
                     Name = nic.Name,
                     Ip = unicast?.Address.ToString(),
                     Mask = unicast?.IPv4Mask?.ToString(),
-                    Gateway = gw?.Address.ToString(),
+                    Gateway = gateway?.Address.ToString(),
                     Dhcp = props.DhcpServerAddresses.Count > 0,
                     WasUp = nic.OperationalStatus == OperationalStatus.Up
                 };
@@ -404,7 +455,7 @@ namespace LabGuard.Core.Guards
             catch { return null; }
         }
 
-        private void Restore(Baseline b)
+        private void Restore(LinkSnapshot b)
         {
             string arg;
             if (b.Dhcp)

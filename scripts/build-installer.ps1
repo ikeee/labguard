@@ -6,7 +6,7 @@
   用法：powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
 #>
 [CmdletBinding()]
-param([switch]$SkipSolutionBuild, [string]$Version = '0.01')
+param([switch]$SkipSolutionBuild, [string]$Version = '0.07.4')
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot

@@ -103,14 +103,14 @@ namespace LabGuard.Agent
                 // 演练只走一条通道（由 --gesture 决定），覆盖配置里的"双通道"以免混淆判定
                 mask.TeacherUnlockMode = gestureMode ? "Gesture" : "Password";
                 string how = gestureMode
-                    ? "按 Pause → ↑↑↓↓←→←→"
+                    ? "使用已配置的管理员解锁通道"
                     : "连按 5 次 Esc → 输入口令 " + drillPassword + " → 回车";
                 mask.ShowMask("机位 DRILL-01", "网络已断开（演练）",
                     "老师解锁演练：" + how + "。",
                     PasswordHasher.Create(drillPassword), false, true,
                     () => "演练中：" + how,
                     () => false,                                               // 演练不靠网络恢复
-                    channel => { teacherUnlocked = true; });                    // 老师途径解锁时置位（channel：手势/密码）
+                    channel => { teacherUnlocked = true; });                    // 老师途径解锁时置位
 
                 Console.WriteLine("等待老师操作：" + how + "（60 秒内，"
                     + (noLock ? "未锁键鼠" : "已硬锁键鼠") + "）。");

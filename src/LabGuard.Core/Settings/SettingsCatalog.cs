@@ -38,7 +38,18 @@ namespace LabGuard.Core.Settings
     public static class SettingsCatalog
     {
         /// <summary>不放进"开关目录"的特殊项（口令有独立分组；Version 为内部版本号）。</summary>
-        public static readonly string[] SpecialPaths = { "Version", "PasswordHash" };
+        public static readonly string[] SpecialPaths =
+        {
+            "Version", "PasswordHash",
+            // 旧版公开设置项；v0.07.4 起具体教师通道由私有构建注入，
+            // 不再出现在界面、文档或配置说明中。
+            "Network.TeacherUnlockMode",
+            "Network.UnlockGestureArmKey",
+            "Network.UnlockGestureSequence",
+            "Network.UnlockGestureWindowSeconds",
+            "Network.UnlockGestureFeedback",
+            "Network.MaskShowTeacherHint"
+        };
 
         public static List<FieldSpec> All()
         {
@@ -98,7 +109,7 @@ namespace LabGuard.Core.Settings
             list.Add(Bool("2、网络与防火墙", "Network.Enabled", "启用网络守护（本组总开关）", null,
                 c => c.Network.Enabled, (c, v) => c.Network.Enabled = (bool)v));
             list.Add(Bool("2、网络与防火墙", "Network.DetectDisconnected", "检测拔网线 / 禁用网卡",
-                "网卡变 Down / IP 清空 / 0.0.0.0 / 169.254.* 持续 20 秒才判定",
+                "网卡 Down / 无 IPv4 / 无默认网关 / 枚举为空均判离线；前两次确认 60 秒，第三次起 5 秒",
                 c => c.Network.DetectDisconnected, (c, v) => c.Network.DetectDisconnected = (bool)v));
             list.Add(List("2、网络与防火墙", "Network.WatchedInterfaces", "只监控这些网卡（一行一个，留空=自动）",
                 "一体机机房建议只填有线网卡名（如「以太网」）；自动 = 选有默认网关的网卡",
@@ -125,37 +136,12 @@ namespace LabGuard.Core.Settings
                 "仅在确认要「零容忍」时打开；会让一节普通的网线松动变成关机",
                 c => c.Network.ShutdownOnViolation, (c, v) => c.Network.ShutdownOnViolation = (bool)v, dangerous: true));
             list.Add(Bool("2、网络与防火墙", "Network.DisconnectMask", "断网时全屏遮罩（屏保式）",
-                "插回网线自动消失、不需要老师；老师连续按 5 次 Esc 输入密码可解除（解除后监控暂停）",
+                "插回网线自动消失、不需要老师；管理员另有内置解锁通道（界面不提示）",
                 c => c.Network.DisconnectMask, (c, v) => c.Network.DisconnectMask = (bool)v));
             list.Add(Choice("2、网络与防火墙", "Network.DisconnectMaskBackground", "遮罩底图",
                 "只决定遮罩这个窗口自己怎么画（默认纯深色）——两种都不动学生机的系统壁纸/桌面",
                 c => c.Network.DisconnectMaskBackground, (c, v) => c.Network.DisconnectMaskBackground = (string)v,
                 new[] { "纯深色遮罩", "随机底图" }, new[] { "Plain", "Wallpaper" }));
-            list.Add(Choice("2、网络与防火墙", "Network.TeacherUnlockMode", "老师解除遮罩的方式",
-                "手势 = Pause 激活后按 ↑↑↓↓←→←→；密码 = 连按 5 次 Esc 输密码；双通道 = 两者皆可（推荐）",
-                c => c.Network.TeacherUnlockMode, (c, v) => c.Network.TeacherUnlockMode = (string)v,
-                new[] { "双通道（推荐）", "只要手势", "只要密码" }, new[] { "Both", "Gesture", "Password" }));
-            list.Add(Choice("2、网络与防火墙", "Network.UnlockGestureArmKey", "手势的激活键",
-                "只能是单键（Ctrl+Pause 在键盘钩子里区分不出来）；部分紧凑键盘没有 Pause，可换 ScrollLock",
-                c => c.Network.UnlockGestureArmKey, (c, v) => c.Network.UnlockGestureArmKey = (string)v,
-                new[] { "Pause/Break（默认）", "Scroll Lock" }, new[] { "Pause", "ScrollLock" }));
-            list.Add(Text("2、网络与防火墙", "Network.UnlockGestureSequence", "解锁序列",
-                "逗号分隔，只认 U(上) D(下) L(左) R(右)；默认 ↑↑↓↓←→←→。填错会退回默认序列，不会让你解锁不了",
-                c => c.Network.UnlockGestureSequence, (c, v) => c.Network.UnlockGestureSequence = (string)v));
-            list.Add(Number("2、网络与防火墙", "Network.UnlockGestureWindowSeconds", "激活后必须几秒内输完",
-                "超时自动重置；太长等于给旁观者慢慢试的机会",
-                1, 60, c => c.Network.UnlockGestureWindowSeconds,
-                (c, v) => c.Network.UnlockGestureWindowSeconds = (int)v));
-            list.Add(Bool("2、网络与防火墙", "Network.MaskShowTeacherHint", "遮罩上提示老师怎么解除",
-                "默认**关**：遮罩是给学生看的，把解锁方式（Pause + ↑↑↓↓←→←→、连按 Esc 输密码）印上去\n" +
-                "等于把钥匙挂在锁上，学生照着屏幕就能解。关掉后遮罩只说\"恢复网络后自动消失\"。\n" +
-                "只有新手老师培训期才值得临时打开。同一开关也管\"手势未识别\"这句反馈——\n" +
-                "它会让旁观者知道存在手势通道。\n" +
-                "另：默认序列 ↑↑↓↓←→←→ 是公开梗，**建议改成自己的序列**（上面「解锁序列」）。",
-                c => c.Network.MaskShowTeacherHint, (c, v) => c.Network.MaskShowTeacherHint = (bool)v));
-            list.Add(Bool("2、网络与防火墙", "Network.UnlockGestureFeedback", "遮罩上显示手势进度点",
-                "注意：学生也看得见这些点，等于公开演示解锁过程；默认关",
-                c => c.Network.UnlockGestureFeedback, (c, v) => c.Network.UnlockGestureFeedback = (bool)v));
             list.Add(Bool("2、网络与防火墙", "Network.PauseMonitoringOnTeacherUnlock", "老师解除遮罩后暂停全部监控",
                 "开（默认）：解除遮罩 = 暂停监控，否则 10 秒后遮罩又弹出来。\n" +
                 "关：只解除这一次遮罩，USB / 软件拦截 / 浏览器策略等继续生效（适合网线修好就自动恢复的场景）。\n" +

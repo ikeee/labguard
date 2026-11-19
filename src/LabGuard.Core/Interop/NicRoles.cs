@@ -73,6 +73,52 @@ namespace LabGuard.Core.Interop
         }
 
         /// <summary>
+        /// 一条可用于联网判据的完整链路：网卡 Up、有 IPv4，并且有默认网关。
+        /// 固定 IP 机房也必须有网关；只有 IP、没有默认路由时不能算"有网"。
+        /// </summary>
+        public static bool IsOnline(NetworkInterface nic, out string ip, out string gateway)
+        {
+            ip = null;
+            gateway = null;
+            try
+            {
+                if (nic == null || nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) return false;
+                if (nic.OperationalStatus != OperationalStatus.Up) return false;
+
+                IPInterfaceProperties props = nic.GetIPProperties();
+                foreach (UnicastIPAddressInformation addr in props.UnicastAddresses)
+                {
+                    if (addr.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                    string candidate = addr.Address.ToString();
+                    if (candidate == "0.0.0.0" || candidate.StartsWith("169.254.")) continue;
+                    ip = candidate;
+                    break;
+                }
+                if (string.IsNullOrEmpty(ip)) return false;
+
+                foreach (GatewayIPAddressInformation gw in props.GatewayAddresses)
+                {
+                    if (gw.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                    string candidate = gw.Address.ToString();
+                    if (candidate == "0.0.0.0") continue;
+                    gateway = candidate;
+                    break;
+                }
+                return !string.IsNullOrEmpty(gateway) && gateway != "0.0.0.0" && ip != IcsGatewayIp;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static bool HasDefaultGateway(NetworkInterface nic)
+        {
+            string ip, gateway;
+            return IsOnline(nic, out ip, out gateway);
+        }
+
+        /// <summary>
         /// 选出"代表本机联网状态"的网卡：
         /// 1) 设置里显式指定 WatchedInterfaces（按名字/描述匹配）优先；
         /// 2) 否则自动：排除热点/虚拟网卡后，优先取"有默认网关"的网卡；
@@ -149,35 +195,9 @@ namespace LabGuard.Core.Interop
                 Log.Warn("设置里指定的被监控网卡没找到，改为自动选择");
             }
 
-            foreach (NetworkInterface nic in candidates)
-            {
-                try
-                {
-                    if (nic.OperationalStatus != OperationalStatus.Up) continue;
-                    if (nic.GetIPProperties().GatewayAddresses.Count > 0) result.Add(nic);
-                }
-                catch { }
-            }
-            if (result.Count > 0)
-            {
-                reason = "自动选中 " + result.Count + " 个有默认网关的网卡" + fallbackNote;
-                return result;
-            }
-
-            foreach (NetworkInterface nic in candidates)
-            {
-                string ip;
-                if (HasUsableIpv4(nic, out ip)) result.Add(nic);
-            }
-            if (result.Count > 0)
-            {
-                reason = "自动选中 " + result.Count + " 个有 IP 的物理网卡（没有默认网关）" + fallbackNote;
-                return result;
-            }
-
-            // 冷启动/开机前拔线：网卡可能是 Down、没有网关也没有可用 IP。
-            // 此时必须把物理网卡本身留作判据，否则 watchedTotal=0，
-            // NetworkGuard 永远判定不了断网（插回网线也不会恢复监控）。
+            // 冷启动/开机前拔线：候选里必须保留物理网卡本身，即便它当前
+            // Down、没有 IP、没有默认网关。把"候选"误做成"已联网网卡"会让
+            // watchedTotal=0，NetworkGuard 永远无法判定断网。
             // 有线优先；无线只在没有有线网卡时兜底。
             foreach (NetworkInterface nic in candidates
                 .OrderByDescending(n => IsWiredType(n.NetworkInterfaceType))
@@ -186,7 +206,7 @@ namespace LabGuard.Core.Interop
                 result.Add(nic);
             }
             reason = result.Count > 0
-                ? "冷启动没有在线网卡，已选中 " + result.Count + " 个物理网卡作为离线判据（插回网线后自动恢复）" + fallbackNote
+                ? "自动选中 " + result.Count + " 个物理网卡作为判据（有线优先；离线和在线都会保留）" + fallbackNote
                 : "没有找到可判定的物理网卡（本机可能没有网卡）";
             return result;
         }
@@ -199,8 +219,8 @@ namespace LabGuard.Core.Interop
                 try
                 {
                     if (IsExcluded(nic.Name, nic.Description, config?.Network?.ExcludedInterfaces)) continue;
-                    string ip;
-                    if (HasUsableIpv4(nic, out ip) && ip != IcsGatewayIp) return true;
+                    string ip, gateway;
+                    if (IsOnline(nic, out ip, out gateway)) return true;
                 }
                 catch { }
             }

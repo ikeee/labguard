@@ -47,6 +47,7 @@ namespace LabGuard.SelfTest
             TestNicRoles();
             TestStandaloneDefaults();
             TestMaskRearm();
+            TestPrivateUnlockProfile();
             TestEngineDryRun();
 
             Console.WriteLine();
@@ -208,6 +209,16 @@ namespace LabGuard.SelfTest
             Check("IP 归零 0.0.0.0 = 断网", NetworkGuard.IsDisconnected("0.0.0.0", true));
             Check("正常固定 IP ≠ 断网", !NetworkGuard.IsDisconnected("192.168.50.100", true));
             Check("正常 DHCP IP ≠ 断网", !NetworkGuard.IsDisconnected("10.53.3.224", true));
+            Check("Up + IPv4 + 默认网关 = 在线",
+                NetworkGuard.IsLinkOnline(true, "192.168.50.100", "192.168.50.1"));
+            Check("Up + IPv4 但没有默认网关 = 离线",
+                !NetworkGuard.IsLinkOnline(true, "192.168.50.100", null));
+            Check("网卡 Down 即使有旧 IP = 离线",
+                !NetworkGuard.IsLinkOnline(false, "192.168.50.100", "192.168.50.1"));
+            Check("连续稳定 9 分 59 秒不复位重复断网计数",
+                !NetworkGuard.ShouldResetRepeat(2, TimeSpan.FromSeconds(599)));
+            Check("连续稳定 10 分钟复位重复断网计数",
+                NetworkGuard.ShouldResetRepeat(2, TimeSpan.FromMinutes(10)));
             Console.WriteLine("[5.1] 锁屏/遮罩的输入硬锁（InputLock）");
             Check("模式归一化：Off 只认 Off", LabGuard.Core.Interop.InputLock.Normalize("Off") == "Off");
             Check("模式归一化：空值/怪值都按 On 处理",
@@ -240,54 +251,75 @@ namespace LabGuard.SelfTest
             Check("收尾后 CursorLock 回到可见态（不会把指针留在隐藏态）",
                 !LabGuard.Core.Interop.CursorLock.IsHidden);
 
-            Console.WriteLine("[5.5] 按键手势解锁（Pause → ↑↑↓↓←→←→）的状态机");
-            // 独立成类就是为了能在这里断言：这条通道历史上因为"没有可断言入口"连续三轮漏验。
+            Console.WriteLine("[5.5] 私有解锁资料的状态机（合成测试资料，不含部署组合）");
+            // 状态机本身用合成资料测试；真实组合只在私有构建资源中注入。
             int vkUp = LabGuard.Core.Interop.UnlockGesture.VkUp;
             int vkDown = LabGuard.Core.Interop.UnlockGesture.VkDown;
             int vkLeft = LabGuard.Core.Interop.UnlockGesture.VkLeft;
             int vkRight = LabGuard.Core.Interop.UnlockGesture.VkRight;
-            int vkPause = LabGuard.Core.Interop.UnlockGesture.VkPause;
-            var GR = new LabGuard.Core.Interop.UnlockGesture("Pause", "U,U,D,D,L,R,L,R", 5);
+            int vkLShift = LabGuard.Core.Interop.UnlockGesture.VkLShift;
+            var testProfile = new LabGuard.Core.Interop.UnlockGestureProfile(
+                new[] { vkLShift }, new[] { "L", "R", "U", "D" }, 2);
+            var GR = new LabGuard.Core.Interop.UnlockGesture(testProfile);
             DateTime t0 = DateTime.Now;
 
-            Check("未按激活键时方向键无效（不会误激活）",
-                GR.KeyDown(vkUp, t0) == LabGuard.Core.Interop.GestureResult.None && !GR.Armed);
-            GR.KeyUp(vkUp);
-            Check("Pause 键激活", GR.KeyDown(vkPause, t0) == LabGuard.Core.Interop.GestureResult.Armed && GR.Armed);
-            GR.KeyUp(vkPause);
+            Check("未按修饰键时方向键无效（不会误激活）",
+                GR.KeyDown(vkUp, 0, false, false, t0) == LabGuard.Core.Interop.GestureResult.None && !GR.Armed);
+            Check("旧版单键激活路径不再生效",
+                new LabGuard.Core.Interop.UnlockGesture(testProfile)
+                    .KeyDown(0x13, 0, false, false, t0) == LabGuard.Core.Interop.GestureResult.None);
+            Check("修饰键按住时进入准备态",
+                GR.KeyDown(vkLShift, 0, false, false, t0) == LabGuard.Core.Interop.GestureResult.Armed &&
+                GR.ModifiersHeld);
+            GR.KeyUp(vkLShift, 0, false, t0);
+            Check("全部松开后才进入序列窗口", GR.Armed && !GR.ModifiersHeld);
 
-            // 长按 ↑：连发 keydown 中间一个 keyup 都没有（低级钩子实测如此），必须只算一次
-            Check("长按 ↑ 的第一下推进一格", GR.KeyDown(vkUp, t0) == LabGuard.Core.Interop.GestureResult.Progress);
-            Check("长按 ↑ 的重复 keydown 被忽略（autorepeat 去重）",
-                GR.KeyDown(vkUp, t0) == LabGuard.Core.Interop.GestureResult.None);
-            Check("autorepeat 再来一次仍被忽略", GR.KeyDown(vkUp, t0) == LabGuard.Core.Interop.GestureResult.None);
-            GR.KeyUp(vkUp);
-            Check("↑ 抬起后才能再算一次", GR.KeyDown(vkUp, t0) == LabGuard.Core.Interop.GestureResult.Progress && GR.Position == 2);
-            GR.KeyUp(vkUp);
+            Check("长按方向键的第一下推进一格",
+                GR.KeyDown(vkLeft, 0, true, false, t0) == LabGuard.Core.Interop.GestureResult.Progress);
+            Check("同一方向键重复 keydown 被忽略（autorepeat 去重）",
+                GR.KeyDown(vkLeft, 0, true, false, t0) == LabGuard.Core.Interop.GestureResult.None);
+            GR.KeyUp(vkLeft, 0, true, t0);
+            Check("方向键抬起后才能再算一次",
+                GR.KeyDown(vkRight, 0, false, false, t0) == LabGuard.Core.Interop.GestureResult.Progress &&
+                GR.Position == 2);
+            GR.KeyUp(vkRight, 0, false, t0);
 
             Check("走错一位 → 整段重置（返回 Mistake）",
-                GR.KeyDown(vkLeft, t0) == LabGuard.Core.Interop.GestureResult.Mistake && !GR.Armed);
-            GR.KeyUp(vkLeft);
+                GR.KeyDown(vkDown, 0, false, false, t0) == LabGuard.Core.Interop.GestureResult.Mistake && !GR.Armed);
+            GR.KeyUp(vkDown, 0, false, t0);
 
-            // 完整走一遍：Pause → ↑↑↓↓←→←→
+            var complete = new LabGuard.Core.Interop.UnlockGesture(testProfile);
+            complete.KeyDown(vkLShift, 0, false, false, t0);
+            complete.KeyUp(vkLShift, 0, false, t0);
             var last = LabGuard.Core.Interop.GestureResult.None;
-            foreach (int vk in new[] { vkPause, vkUp, vkUp, vkDown, vkDown, vkLeft, vkRight, vkLeft, vkRight })
-            { last = GR.KeyDown(vk, t0); GR.KeyUp(vk); }
+            foreach (int vk in new[] { vkLeft, vkRight, vkUp, vkDown })
+            { last = complete.KeyDown(vk, 0, false, false, t0); complete.KeyUp(vk, 0, false, t0); }
             Check("完整序列命中（返回 Unlocked）", last == LabGuard.Core.Interop.GestureResult.Unlocked);
-            Check("命中后回到未激活态", !GR.Armed && GR.Position == 0);
+            Check("命中后回到未激活态", !complete.Armed && complete.Position == 0);
 
-            var gTimeout = new LabGuard.Core.Interop.UnlockGesture("Pause", null, 2);
-            gTimeout.KeyDown(vkPause, t0); gTimeout.KeyUp(vkPause);
+            var mixed = new LabGuard.Core.Interop.UnlockGesture(
+                new[] { LabGuard.Core.Interop.UnlockGesture.VkControl,
+                        LabGuard.Core.Interop.UnlockGesture.VkAlt },
+                new[] { "U", "D" }, 2);
+            mixed.KeyDown(LabGuard.Core.Interop.UnlockGesture.VkLControl, 0x1D, false, false, t0);
+            Check("左右修饰键混用被拒绝",
+                mixed.KeyDown(LabGuard.Core.Interop.UnlockGesture.VkRAlt, 0x38, true, false, t0) ==
+                LabGuard.Core.Interop.GestureResult.Mistake);
+
+            var gTimeout = new LabGuard.Core.Interop.UnlockGesture(testProfile);
+            gTimeout.KeyDown(vkLShift, 0, false, false, t0);
+            gTimeout.KeyUp(vkLShift, 0, false, t0);
             Check("超过时间窗口 → 重置（返回 Timeout）",
-                gTimeout.KeyDown(vkUp, t0.AddSeconds(10)) == LabGuard.Core.Interop.GestureResult.Timeout && !gTimeout.Armed);
+                gTimeout.KeyDown(vkLeft, 0, false, false, t0.AddSeconds(10)) ==
+                LabGuard.Core.Interop.GestureResult.Timeout && !gTimeout.Armed);
 
-            Check("序列填错会退回默认 ↑↑↓↓←→←→（不会让老师解锁不了）",
-                LabGuard.Core.Interop.UnlockGesture.ParseSequence("U,U,X").Length == 8);
-            Check("小键盘 8 不算上箭头（不受 NumLock 影响）",
+            Check("序列解析错误返回空集合（不提供隐藏默认值）",
+                LabGuard.Core.Interop.UnlockGesture.ParseSequence("U,U,X").Length == 0);
+            Check("小键盘方向键不算方向键（不受 NumLock 影响）",
                 LabGuard.Core.Interop.UnlockGesture.SymbolOf(0x68) == null);
-            Check("ScrollLock 可作备用激活键",
-                LabGuard.Core.Interop.UnlockGesture.VkForArmKey("ScrollLock")
-                    == LabGuard.Core.Interop.UnlockGesture.VkScrollLock);
+            Check("注入按键不会推进序列",
+                new LabGuard.Core.Interop.UnlockGesture(testProfile).KeyDown(vkUp, 0, false, true, t0) ==
+                LabGuard.Core.Interop.GestureResult.None);
 
             Console.WriteLine("[5.6] 进程防拆加固（任务管理器杀不掉 / 老师仍杀得掉）");
             // 与手势解锁同一个道理：这条链踩过"没有可断言入口"的亏，
@@ -388,32 +420,20 @@ namespace LabGuard.SelfTest
                 new GuardConfig().ResumeAfterMinutes == 120);
 
             // ---------------------------------------------------------------- [5.8] 遮罩不得泄露解锁方式
-            // 真机反馈（2026-10-08）：遮罩上直接印着「老师：按 Pause 后按 ↑↑↓↓←→←→ 解除」，
-            // 学生照着屏幕就能解锁 —— 等于把钥匙挂在锁上。规则：遮罩默认不透露任何解锁通道。
             Console.WriteLine("[5.8] 遮罩不泄露解锁方式（不把钥匙挂在锁上）");
             Func<bool, bool, bool, string, string> tip = LabGuard.Core.UI.DisconnectMaskForm.BuildTeacherTip;
             Func<string, bool> leaks = LabGuard.Core.UI.DisconnectMaskForm.TipLeaksUnlockMethod;
-            string tipDefault = tip(false, true, true, "Pause");
+            string tipDefault = tip(false, true, true, "");
             Check("默认（双通道）遮罩底部不泄露任何解锁方式", !leaks(tipDefault));
             Check("默认文案仍说清\"网络恢复后会自动消失\"（学生知道该怎么办）",
                 tipDefault.Contains("恢复网络后 10 秒内自动消失"));
-            Check("纯手势通道 + 关闭提示 → 也不泄露", !leaks(tip(false, true, false, "Pause")));
-            Check("纯密码通道 + 关闭提示 → 也不泄露", !leaks(tip(false, false, true, "Pause")));
-            Check("ScrollLock 激活键 + 关闭提示 → 也不泄露", !leaks(tip(false, true, true, "ScrollLock")));
-            Check("关提示时三种通道文案完全一致（不因通道不同泄露信息）",
-                tip(false, true, true, "ScrollLock") == tip(false, false, false, "Pause"));
-            Check("老师主动打开后才显示手势序列", leaks(tip(true, true, false, "Pause")) &&
-                tip(true, true, false, "Pause").Contains("↑↑↓↓←→←→"));
-            Check("老师主动打开后：双通道会把密码通道也说出来",
-                tip(true, true, true, "Pause").Contains("Esc"));
-            Check("激活键为 ScrollLock 时提示文案跟着变（不说 Pause）",
-                tip(true, true, false, "ScrollLock").Contains("Scroll Lock") &&
-                !tip(true, true, false, "ScrollLock").Contains("Pause"));
-            Check("泄露判定认得各种形态（Pause / ScrollLock / ↑ / Esc / 密码 / 手势）",
-                leaks("按 Pause 解除") && leaks("按 Scroll Lock 解除") && leaks("↑↑↓↓←→←→") &&
+            Check("即使旧配置要求显示提示，公开版本也不泄露", !leaks(tip(true, true, true, "Pause")));
+            Check("不同旧通道配置的文案完全一致", tip(true, true, true, "Pause") == tip(true, false, false, ""));
+            Check("泄露判定认得各种旧形态",
+                leaks("按 Pause 解除") && leaks("按 Scroll Lock 解除") && leaks("↑↓←→") &&
                 leaks("连按 5 次 Esc") && leaks("输入密码") && leaks("手势未识别") &&
                 !leaks("（恢复网络后 10 秒内自动消失）"));
-            Check("新增配置默认合理：遮罩默认不提示解锁方式 / 不显示进度点",
+            Check("配置默认合理：遮罩不提示 / 不显示进度点",
                 !new GuardConfig().Network.MaskShowTeacherHint &&
                 !new GuardConfig().Network.UnlockGestureFeedback);
             // 注入逻辑集中在一处（托盘 / 设置截图预览 / Agent --preview-mask 三处共用）：
@@ -425,10 +445,10 @@ namespace LabGuard.SelfTest
                 var probe = new LabGuard.Core.UI.DisconnectMaskForm();
                 var probeCfg = new GuardConfig().Network;
                 probeCfg.MaskShowTeacherHint = true;
-                probeCfg.UnlockGestureSequence = "L,L,R,R";
+                  probeCfg.UnlockGestureSequence = "L,L,R,R";
                 probe.ApplyNetworkPolicy(probeCfg);
-                Check("配置注入：一次调用把整组「老师解锁方式」带进遮罩（三处共用，杜绝漏注入）",
-                    probe.ShowTeacherHint && probe.GestureSequence == "L,L,R,R");
+                  Check("配置注入：旧组合字段不会进入公开遮罩",
+                      !probe.ShowTeacherHint && probe.GestureSequence == "");
                 probe.Dispose();
             }
             catch (Exception ex) { Check("配置注入：构造遮罩并注入配置不抛异常（" + ex.Message + "）", false); }
@@ -685,7 +705,7 @@ namespace LabGuard.SelfTest
             foreach (var p in type.GetProperties())
             {
                 string path = prefix + p.Name;
-                if (prefix.Length == 0 && specials.Contains(path)) continue;
+                if (specials.Contains(path)) continue;
                 Type t = p.PropertyType;
                 bool isContainer = t.Namespace == "LabGuard.Core.Config" && t != typeof(GuardConfig);
                 if (isContainer)
@@ -747,12 +767,12 @@ namespace LabGuard.SelfTest
         }
 
         /// <summary>
-        /// v0.07.3 单机版默认值回归：下载默认放行、游戏默认禁用、预热 60 秒、
+        /// v0.07.4 单机版默认值回归：下载默认放行、游戏默认禁用、预热 60 秒、
         /// 以及 Notify 动作不得删除文件。
         /// </summary>
         private static void TestStandaloneDefaults()
         {
-            Console.WriteLine("[8.1] 单机版 v0.07.3 默认值");
+            Console.WriteLine("[8.1] 单机版 v0.07.4 默认值");
             var cfg = new GuardConfig();
             Check("有线固定 IP 默认预热 60 秒", cfg.StartDelaySeconds == 60, cfg.StartDelaySeconds + " 秒");
             Check("浏览器下载默认放行", !cfg.Browser.BlockDownloads);
@@ -763,12 +783,12 @@ namespace LabGuard.SelfTest
             Check("新文件/下载监控默认关闭", !cfg.FileCreation.Enabled);
             Check("Notify 动作不删除文件", !FileCreationGuard.ShouldDelete("Notify"));
             Check("Delete 动作仍会删除文件", FileCreationGuard.ShouldDelete("Delete"));
-            Check("前两次断网仍用 20 秒确认",
-                NetworkGuard.ConfirmSecondsFor(0) == 20 && NetworkGuard.ConfirmSecondsFor(1) == 20);
+            Check("前两次断网使用 60 秒确认",
+                NetworkGuard.ConfirmSecondsFor(0) == 60 && NetworkGuard.ConfirmSecondsFor(1) == 60);
             Check("第 3 次起断网改用 5 秒确认",
                 NetworkGuard.ConfirmSecondsFor(2) == 5 && NetworkGuard.ConfirmSecondsFor(3) == 5);
 
-            // 干跑浏览器策略：默认只能看到游戏限制，不应写任何 DownloadRestrictions。
+            // 干跑浏览器策略：默认允许下载，但可以清理旧版本留下的限制。
             bool oldDryRun = Log.DryRun;
             try
             {
@@ -779,11 +799,34 @@ namespace LabGuard.SelfTest
                 browser.Stop();
                 var browserAudit = SystemActions.AuditTrail.Skip(auditStart).ToList();
                 Check("默认浏览器策略不写下载限制",
-                    !browserAudit.Any(x => x.IndexOf("DownloadRestrictions", StringComparison.OrdinalIgnoreCase) >= 0));
+                    !browserAudit.Any(x => x.StartsWith("SET-REG", StringComparison.OrdinalIgnoreCase) &&
+                        x.IndexOf("DownloadRestrictions", StringComparison.OrdinalIgnoreCase) >= 0));
+                Check("默认浏览器策略清理旧下载限制",
+                    browserAudit.Any(x => x.StartsWith("DEL-REG", StringComparison.OrdinalIgnoreCase) &&
+                        x.IndexOf("DownloadRestrictions", StringComparison.OrdinalIgnoreCase) >= 0));
+                Check("浏览器策略不删除策略根键",
+                    !browserAudit.Any(x => x.StartsWith("DEL-KEY", StringComparison.OrdinalIgnoreCase) &&
+                        (x.IndexOf("Chrome", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         x.IndexOf("Edge", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         x.IndexOf("Firefox", StringComparison.OrdinalIgnoreCase) >= 0)));
                 Check("默认浏览器策略仍写 Chrome 小恐龙限制",
                     browserAudit.Any(x => x.IndexOf("AllowDinosaurEasterEgg = 0", StringComparison.OrdinalIgnoreCase) >= 0));
                 Check("默认浏览器策略仍写 Edge 冲浪限制",
                     browserAudit.Any(x => x.IndexOf("AllowSurfGame = 0", StringComparison.OrdinalIgnoreCase) >= 0));
+
+                var blockCfg = new GuardConfig();
+                blockCfg.Browser.BlockDownloads = true;
+                int blockStart = SystemActions.AuditTrail.Count;
+                var blockedBrowser = new BrowserPolicyGuard();
+                blockedBrowser.Start(new GuardContext(blockCfg, AppDomain.CurrentDomain.BaseDirectory, null));
+                blockedBrowser.Stop();
+                var blockAudit = SystemActions.AuditTrail.Skip(blockStart).ToList();
+                Check("老师手动开启下载限制后仍写 Chrome/Edge 限制",
+                    blockAudit.Any(x => x.IndexOf("Google\\Chrome\\DownloadRestrictions = 3", StringComparison.OrdinalIgnoreCase) >= 0) &&
+                    blockAudit.Any(x => x.IndexOf("Microsoft\\Edge\\DownloadRestrictions = 3", StringComparison.OrdinalIgnoreCase) >= 0));
+                Check("老师手动开启下载限制不影响小游戏禁用",
+                    blockAudit.Any(x => x.IndexOf("AllowDinosaurEasterEgg = 0", StringComparison.OrdinalIgnoreCase) >= 0) &&
+                    blockAudit.Any(x => x.IndexOf("AllowSurfGame = 0", StringComparison.OrdinalIgnoreCase) >= 0));
             }
             finally
             {
@@ -858,6 +901,33 @@ namespace LabGuard.SelfTest
             Check("网络恢复后 _maskShown 已复位", !(bool)maskField.GetValue(guard));
             Check("网络恢复后 _unpluggedStamp 已清零", (long)stampField.GetValue(guard) == 0);
             Check("网络恢复后 _soundDone 已复位", !(bool)soundField.GetValue(guard));
+        }
+
+        private static void TestPrivateUnlockProfile()
+        {
+            Console.WriteLine("[8.3] 私有解锁资料注入");
+            Type type = typeof(LabGuard.Core.UI.DisconnectMaskForm).Assembly
+                .GetType("LabGuard.Core.Security.PrivateUnlockProfile");
+            if (type == null)
+            {
+                Check("私有解锁资料类型存在", false);
+                return;
+            }
+            var method = type.GetMethod("TryGet",
+                System.Reflection.BindingFlags.Static |
+                System.Reflection.BindingFlags.Public |
+                System.Reflection.BindingFlags.NonPublic);
+            if (method == null)
+            {
+                Check("私有解锁资料读取入口存在", false);
+                return;
+            }
+            object[] args = { null };
+            bool loaded = (bool)method.Invoke(null, args);
+            if (loaded)
+                Check("私有发布构建已注入解锁资料", true);
+            else
+                Console.WriteLine("  [SKIP] 公开源码构建未注入私有资料；只保留密码通道");
         }
 
         private static void TestEngineDryRun()

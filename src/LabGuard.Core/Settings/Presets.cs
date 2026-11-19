@@ -105,7 +105,7 @@ namespace LabGuard.Core.Settings
             c.Network.DisconnectMaskBackground = "Plain";
             // 老师解锁：默认保留「手势 + 密码」双通道（取舍见 docs/06）
             c.Network.TeacherUnlockMode = "Both";
-            c.Network.UnlockGestureArmKey = "Pause";
+            c.Network.UnlockGestureArmKey = "";
             c.Network.UnlockGestureSequence = "U,U,D,D,L,R,L,R";
             c.Network.UnlockGestureWindowSeconds = 5;
             c.Network.UnlockGestureFeedback = false;

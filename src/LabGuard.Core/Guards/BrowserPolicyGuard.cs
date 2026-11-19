@@ -26,8 +26,6 @@ namespace LabGuard.Core.Guards
         private const string WindowsDnsClient = @"SOFTWARE\Policies\Microsoft\Windows NT\DNSClient";
         private const string IeZones = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\3";
         private const string IeRestrict = @"SOFTWARE\Policies\Microsoft\Internet Explorer\Restrictions";
-        private bool _appliedIeDownload;
-        private bool _appliedIeSaveAs;
 
         protected override void OnStart()
         {
@@ -43,11 +41,18 @@ namespace LabGuard.Core.Guards
                 ok &= Convert.ToInt32(SystemActions.GetRegistryValue(RegistryHive.LocalMachine, Chrome, "AllowDinosaurEasterEgg") ?? 1) == 0;
             if (b.BlockDownloads)
                 ok &= Convert.ToInt32(SystemActions.GetRegistryValue(RegistryHive.LocalMachine, Chrome, "DownloadRestrictions") ?? 0) == 3;
+            else
+                ok &= !HasValue(Chrome, "DownloadRestrictions") &&
+                      !HasValue(Edge, "DownloadRestrictions") &&
+                      !HasValue(Firefox, "DisableDownloads") &&
+                      !HasValue(Firefox, "BlockAboutDownloads");
             if (b.BlockIeDownload)
             {
                 ok &= Convert.ToInt32(SystemActions.GetRegistryValue(RegistryHive.LocalMachine, IeZones, "1803") ?? 0) == 3;
                 ok &= Convert.ToInt32(SystemActions.GetRegistryValue(RegistryHive.LocalMachine, IeZones, "2200") ?? 1) == 0;
             }
+            else
+                ok &= !HasValue(IeZones, "1803") && !HasValue(IeZones, "2200");
             if (!ok)
             {
                 Context.Report(Name, "你违规修改了注册表的禁止下载/禁止游戏项！现在助手强制恢复！", ViolationAction.Notify);
@@ -66,19 +71,31 @@ namespace LabGuard.Core.Guards
                 Set(Firefox, "DisableDownloads", 1);
                 Set(Firefox, "BlockAboutDownloads", 1);
             }
+            else
+            {
+                // 默认放行下载（包括 Edge 截图后的保存/下载）。只清理旧版本
+                // 可能留下的下载限制，不删除策略根键，避免误伤学校其他策略。
+                ClearDownloadRestrictions();
+            }
             // IE 的下载限制单独可控：BlockDownloads 打开时一并覆盖 IE；
             // BlockIeDownload 单独打开时只封 IE，不影响 Chrome/Edge。
             if (b.BlockDownloads || b.BlockIeDownload)
             {
                 Set(IeZones, "1803", 3);
                 Set(IeZones, "2200", 0);
-                _appliedIeDownload = true;
+            }
+            else
+            {
+                ClearIeDownloadRestrictions();
             }
             if (b.BlockSaveAs)
             {
                 Set(IeRestrict, "NoBrowserSaveAs", 1);
                 Set(Edge, "SaveAs", 0);
-                _appliedIeSaveAs = true;
+            }
+            else
+            {
+                ClearSaveAsRestrictions();
             }
             if (b.BlockDevTools) Set(Edge, "DeveloperToolsAvailability", 2);
             if (b.BlockChromeDino) Set(Chrome, "AllowDinosaurEasterEgg", 0);
@@ -97,13 +114,43 @@ namespace LabGuard.Core.Guards
                 Log.Info("已关闭浏览器/系统加密 DNS（DoH），保证集中 DNS 过滤有效");
             }
             if (!string.IsNullOrWhiteSpace(b.Homepage)) Set(Chrome, "HomepageLocation", b.Homepage);
-            Log.Info("已应用浏览器组策略（禁止下载=" + b.BlockDownloads + "，小恐龙=" + b.BlockChromeDino + "）");
+            Log.Info("已应用浏览器组策略（允许下载=" + !b.BlockDownloads + "，小恐龙=" + b.BlockChromeDino + "）");
         }
 
         private static void Set(string subKey, string name, object value)
         {
             SystemActions.SetRegistryValue(RegistryHive.LocalMachine, subKey, name, value,
                 value is int ? RegistryValueKind.DWord : RegistryValueKind.String);
+        }
+
+        private static bool HasValue(string subKey, string name)
+        {
+            return SystemActions.GetRegistryValue(RegistryHive.LocalMachine, subKey, name) != null;
+        }
+
+        private static void ClearDownloadRestrictions()
+        {
+            DeleteValue(Chrome, "DownloadRestrictions");
+            DeleteValue(Edge, "DownloadRestrictions");
+            DeleteValue(Firefox, "DisableDownloads");
+            DeleteValue(Firefox, "BlockAboutDownloads");
+        }
+
+        private static void ClearIeDownloadRestrictions()
+        {
+            DeleteValue(IeZones, "1803");
+            DeleteValue(IeZones, "2200");
+        }
+
+        private static void ClearSaveAsRestrictions()
+        {
+            DeleteValue(IeRestrict, "NoBrowserSaveAs");
+            DeleteValue(Edge, "SaveAs");
+        }
+
+        private static void DeleteValue(string subKey, string name)
+        {
+            SystemActions.DeleteRegistryValue(RegistryHive.LocalMachine, subKey, name);
         }
 
         /// <summary>用本程序的 Launcher 替换浏览器快捷方式（默认关闭，需显式开启）。</summary>
@@ -170,20 +217,23 @@ namespace LabGuard.Core.Guards
         protected override void OnStop()
         {
             if (Context == null) return;
-            foreach (string k in new[] { Chrome, Edge, Firefox })
-                SystemActions.DeleteRegistryKey(RegistryHive.LocalMachine, k);
-            if (_appliedIeSaveAs)
-                SystemActions.DeleteRegistryKey(RegistryHive.LocalMachine, IeRestrict);
-            SystemActions.DeleteRegistryKey(RegistryHive.LocalMachine, FirefoxDoh);
+            // 只清本程序管理的值，保留 Chrome/Edge/Firefox 策略根键和其中
+            // 可能存在的学校自有策略。
+            ClearDownloadRestrictions();
+            ClearIeDownloadRestrictions();
+            ClearSaveAsRestrictions();
+            DeleteValue(Edge, "DeveloperToolsAvailability");
+            DeleteValue(Chrome, "AllowDinosaurEasterEgg");
+            DeleteValue(Edge, "AllowSurfGame");
+            DeleteValue(Chrome, "DnsOverHttpsMode");
+            DeleteValue(Chrome, "BuiltInDnsClientEnabled");
+            DeleteValue(Edge, "DnsOverHttpsMode");
+            DeleteValue(Edge, "BuiltInDnsClientEnabled");
+            DeleteValue(FirefoxDoh, "Enabled");
+            DeleteValue(FirefoxDoh, "Locked");
             SystemActions.DeleteRegistryValue(RegistryHive.LocalMachine, WindowsDnsClient, "DoHPolicy");
-            if (_appliedIeDownload)
-            {
-                foreach (string v in new[] { "1803", "2200" })
-                    SystemActions.DeleteRegistryValue(RegistryHive.LocalMachine, IeZones, v);
-            }
-            _appliedIeDownload = false;
-            _appliedIeSaveAs = false;
-            Log.Info("已移除浏览器组策略");
+            DeleteValue(Chrome, "HomepageLocation");
+            Log.Info("已移除浏览器组策略中由 LabGuard 管理的值");
         }
     }
 }

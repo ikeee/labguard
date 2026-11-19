@@ -284,6 +284,14 @@ namespace LabGuard.Core.Config
         {
             if (c.Classroom == null) c.Classroom = new ClassroomSettings();
             if (c.Network == null) c.Network = new NetworkSettings();
+            // v0.07.4：旧版公开解锁字段不再参与运行；清掉旧组合，
+            // 避免导出配置时把历史解锁资料继续带到公开介质。
+            c.Network.TeacherUnlockMode = "Both";
+            c.Network.UnlockGestureArmKey = "";
+            c.Network.UnlockGestureSequence = "";
+            c.Network.UnlockGestureWindowSeconds = 2;
+            c.Network.UnlockGestureFeedback = false;
+            c.Network.MaskShowTeacherHint = false;
             if (c.ProcessBlock == null) c.ProcessBlock = new ProcessBlockSettings();
             if (c.FileCreation == null) c.FileCreation = new FileCreationSettings();
             if (c.Usb == null) c.Usb = new UsbSettings();

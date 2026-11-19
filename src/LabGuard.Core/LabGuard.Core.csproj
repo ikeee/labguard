@@ -16,6 +16,8 @@
     <!-- 程序图标（作者 GitHub 头像）：exe 挂图标走 ApplicationIcon（Directory.Build.props）；
          这里嵌入一份是给运行时代码用（托盘 NotifyIcon 没法自动继承 exe 图标） -->
     <EmbeddedResource Include="Assets\app.ico" />
+    <EmbeddedResource Include="Assets\private-unlock.profile"
+                      Condition="Exists('Assets\private-unlock.profile')" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="System.Management" />
