@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.NetworkInformation;
+using System.Threading;
 using LabGuard.Core.Interop;
 using LabGuard.Core.Logging;
 using Microsoft.Win32;
@@ -19,12 +20,16 @@ namespace LabGuard.Core.Guards
     {
         public override string Name => "网络/防火墙";
         public override bool Enabled => Context?.Config.Network.Enabled ?? false;
-        protected override int IntervalMs => 10000;
+        protected override int IntervalMs => 2000;
 
-        /// <summary>第一次、第二次断网各确认 60 秒；第三次起缩短为 5 秒。</summary>
-        private const int DisconnectConfirmSeconds = 60;
-        private const int RepeatDisconnectConfirmSeconds = 5;
-        private const int RepeatDisconnectAfterCount = 2;
+        /// <summary>第一次 60 秒，第二次 30 秒，第三次起 10 秒。</summary>
+        private const int FirstDisconnectConfirmSeconds = 60;
+        private const int SecondDisconnectConfirmSeconds = 30;
+        private const int RepeatDisconnectConfirmSeconds = 10;
+        /// <summary>断网持续这么久才记作一次“尝试”，避免瞬时抖动刷次数。</summary>
+        public const int DisconnectAttemptQualifySeconds = 2;
+        /// <summary>恢复必须连续两次在线采样，避免旧 IP/网关瞬态。</summary>
+        public const int RestoreConfirmSamples = 2;
         /// <summary>连续稳定在线 10 分钟后，重复断网计数复位。</summary>
         private const int RepeatResetMinutes = 10;
 
@@ -51,6 +56,7 @@ namespace LabGuard.Core.Guards
 
         private readonly List<LinkSnapshot> _baseline = new List<LinkSnapshot>();
         private readonly HashSet<string> _watchedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly object _stateLock = new object();
         private DateTime _startedAt;
         private DateTime _unpluggedSince = DateTime.MinValue;
         private long _unpluggedStamp;
@@ -58,7 +64,13 @@ namespace LabGuard.Core.Guards
         private double _lastStamp;
         private bool _maskShown;
         private bool _soundDone;
-        private int _confirmedDisconnects;
+        private int _disconnectAttempts;
+        private int _episodeConfirmSeconds;
+        private bool _episodeQualified;
+        private int _restoreSamples;
+        private double _lastRestoreSampleStamp;
+        private int _probeQueued;
+        private volatile bool _stopping;
         private bool _episodeCounted;
         private DateTime _stableSince = DateTime.MinValue;
         private bool _pausedByTeacher;
@@ -85,6 +97,7 @@ namespace LabGuard.Core.Guards
 
         protected override void OnStart()
         {
+            _stopping = false;
             _startedAt = DateTime.Now;
             _stableSince = _startedAt;
             RefreshBaseline();
@@ -94,9 +107,33 @@ namespace LabGuard.Core.Guards
             Log.Info("断网判据网卡：" + (_watchedNames.Count == 0 ? "（无）" : string.Join(", ", _watchedNames)));
 
             // 先做一轮探测：如果开机前就拔了网线，计时从服务启动即开始，
-            // 不再等 Windows 慢慢初始化网卡或等下一次 10 秒轮询。
+            // 不再等 Windows 慢慢初始化网卡或等下一次轮询。
             try { OnTick(); }
             catch (Exception ex) { Log.Warn("网络首次探测失败：" + ex.Message); }
+
+            NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
+            NetworkChange.NetworkAvailabilityChanged += OnNetworkAvailabilityChanged;
+        }
+
+        private void OnNetworkAddressChanged(object sender, EventArgs e)
+        {
+            QueueProbe();
+        }
+
+        private void OnNetworkAvailabilityChanged(object sender, NetworkAvailabilityEventArgs e)
+        {
+            QueueProbe();
+        }
+
+        private void QueueProbe()
+        {
+            if (Interlocked.Exchange(ref _probeQueued, 1) != 0) return;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try { OnTick(); }
+                catch (Exception ex) { Log.Warn("网络变化事件探测失败：" + ex.Message); }
+                finally { Interlocked.Exchange(ref _probeQueued, 0); }
+            });
         }
 
         private void RefreshBaseline()
@@ -124,6 +161,12 @@ namespace LabGuard.Core.Guards
 
         protected override void OnTick()
         {
+            lock (_stateLock) OnTickCore();
+        }
+
+        private void OnTickCore()
+        {
+            if (_stopping) return;
             DateTime wall = DateTime.Now;
             double mono = MonoSeconds();
             if (_lastWall != DateTime.MinValue)
@@ -199,16 +242,19 @@ namespace LabGuard.Core.Guards
             if (violationNow && Context.Config.Network.DetectDisconnected)
             {
                 if (_unpluggedStamp == 0)
-                {
-                    _unpluggedStamp = System.Diagnostics.Stopwatch.GetTimestamp();
-                    _unpluggedSince = DateTime.Now;
-                    _stableSince = DateTime.MinValue;
-                    _episodeCounted = false;
-                }
+                    StartEpisode();
 
                 double elapsed = MonoSeconds() - (_unpluggedStamp /
                                                    (double)System.Diagnostics.Stopwatch.Frequency);
-                int confirmSeconds = ConfirmSecondsFor(_confirmedDisconnects);
+                if (!_episodeQualified && IsAttemptQualified(TimeSpan.FromSeconds(elapsed)))
+                {
+                    _episodeQualified = true;
+                    _disconnectAttempts++;
+                    Log.Info("观察到第 " + _disconnectAttempts +
+                             " 次断网尝试（持续 " + (int)elapsed + " 秒，已计入重复次数）");
+                }
+
+                int confirmSeconds = _episodeConfirmSeconds;
                 if (elapsed >= confirmSeconds)
                 {
                     Context.Report(Name, "检测到本机网络已断开（" + _downReason +
@@ -219,13 +265,13 @@ namespace LabGuard.Core.Guards
                     if (!_episodeCounted)
                     {
                         _episodeCounted = true;
-                        _confirmedDisconnects++;
-                        Log.Warn("已确认第 " + _confirmedDisconnects +
-                                 " 次断网（本次确认阈值 " + confirmSeconds + " 秒）");
+                        Log.Warn("第 " + _disconnectAttempts +
+                                 " 次断网尝试达到遮罩阈值（本次阈值 " + confirmSeconds + " 秒）");
                     }
                 }
-                SetStatus("断网 " + (int)elapsed + " 秒（确认阈值 " + confirmSeconds +
-                          " 秒，" + watchedDown + "/" + Math.Max(1, watchedTotal) + " 个判据网卡断开）");
+                SetStatus("断网 " + (int)elapsed + " 秒（第 " + Math.Max(1, _disconnectAttempts) +
+                          " 次尝试，遮罩阈值 " + confirmSeconds + " 秒，" +
+                          watchedDown + "/" + Math.Max(1, watchedTotal) + " 个判据网卡断开）");
                 return;
             }
 
@@ -235,20 +281,26 @@ namespace LabGuard.Core.Guards
                 {
                     SetStatus("部分判据网卡断开（仍有链路，不算断网）");
                 }
-                else
+                else if (RestoreIsStable())
                 {
                     Log.Info("网络已恢复，遮罩与响铃标记复位");
                     ResetAfterRestore();
                     SetStatus("正常");
                 }
+                else
+                {
+                    SetStatus("网络恢复确认中（连续在线采样 " + _restoreSamples +
+                              "/" + RestoreConfirmSamples + "）");
+                    return;
+                }
             }
 
-            if (_confirmedDisconnects > 0 && _stableSince != DateTime.MinValue &&
-                ShouldResetRepeat(_confirmedDisconnects, DateTime.Now - _stableSince))
+            if (_disconnectAttempts > 0 && _stableSince != DateTime.MinValue &&
+                ShouldResetRepeat(_disconnectAttempts, DateTime.Now - _stableSince))
             {
                 Log.Info("网络已稳定 " + RepeatResetMinutes + " 分钟，重复断网计数复位（原 " +
-                         _confirmedDisconnects + " 次）");
-                _confirmedDisconnects = 0;
+                         _disconnectAttempts + " 次）");
+                _disconnectAttempts = 0;
                 _stableSince = DateTime.MinValue;
             }
 
@@ -298,6 +350,20 @@ namespace LabGuard.Core.Guards
                 if (snapshot != null) current[snapshot.Name] = snapshot;
             }
             return current;
+        }
+
+        private void StartEpisode()
+        {
+            _unpluggedStamp = System.Diagnostics.Stopwatch.GetTimestamp();
+            _unpluggedSince = DateTime.Now;
+            _stableSince = DateTime.MinValue;
+            _episodeQualified = false;
+            _episodeCounted = false;
+            _episodeConfirmSeconds = ConfirmSecondsFor(_disconnectAttempts);
+            _restoreSamples = 0;
+            _lastRestoreSampleStamp = 0;
+            Log.Info("开始断网尝试，当前已记录 " + _disconnectAttempts +
+                     " 次，遮罩阈值为 " + _episodeConfirmSeconds + " 秒");
         }
 
         private void ShowMaskIfNeeded(DateTime since)
@@ -360,9 +426,25 @@ namespace LabGuard.Core.Guards
         /// </summary>
         public bool IsWatchedRestored()
         {
+            lock (_stateLock)
+            {
+                if (!RestoreIsStable()) return false;
+                ResetAfterRestore();
+                Log.Info("遮罩检测到网络已恢复，断网状态已复位（可再次触发遮罩）");
+                return true;
+            }
+        }
+
+        private bool RestoreIsStable()
+        {
             string reason;
             List<NetworkInterface> watched = NicRoles.SelectWatched(Context.Config, out reason);
-            if (watched.Count == 0) return false;
+            if (watched.Count == 0)
+            {
+                _restoreSamples = 0;
+                _lastRestoreSampleStamp = 0;
+                return false;
+            }
 
             bool anyOnline = false;
             bool allOnline = true;
@@ -374,13 +456,22 @@ namespace LabGuard.Core.Guards
                 else allOnline = false;
             }
 
-            bool restored = Context.Config.Network.DisconnectRequireAllDown ? allOnline : anyOnline;
-            if (restored)
+            bool onlineNow = Context.Config.Network.DisconnectRequireAllDown ? allOnline : anyOnline;
+            if (!onlineNow)
             {
-                ResetAfterRestore();
-                Log.Info("遮罩检测到网络已恢复，断网状态已复位（可再次触发遮罩）");
+                _restoreSamples = 0;
+                _lastRestoreSampleStamp = 0;
+                return false;
             }
-            return restored;
+
+            double now = MonoSeconds();
+            if (_lastRestoreSampleStamp == 0 ||
+                now - _lastRestoreSampleStamp >= 0.5)
+            {
+                _restoreSamples++;
+                _lastRestoreSampleStamp = now;
+            }
+            return _restoreSamples >= RestoreConfirmSamples;
         }
 
         private void ResetAfterRestore()
@@ -390,22 +481,31 @@ namespace LabGuard.Core.Guards
             _maskShown = false;
             _soundDone = false;
             _episodeCounted = false;
+            _episodeQualified = false;
+            _episodeConfirmSeconds = 0;
+            _restoreSamples = 0;
+            _lastRestoreSampleStamp = 0;
             _stableSince = DateTime.Now;
             _pausedByTeacher = false;
         }
 
-        /// <summary>前两次 60 秒；已确认两次后，从第三次起使用 5 秒。</summary>
+        /// <summary>第一次 60 秒，第二次 30 秒，第三次及以后 10 秒。</summary>
         public static int ConfirmSecondsFor(int confirmedDisconnects)
         {
-            return confirmedDisconnects >= RepeatDisconnectAfterCount
-                ? RepeatDisconnectConfirmSeconds
-                : DisconnectConfirmSeconds;
+            if (confirmedDisconnects <= 0) return FirstDisconnectConfirmSeconds;
+            if (confirmedDisconnects == 1) return SecondDisconnectConfirmSeconds;
+            return RepeatDisconnectConfirmSeconds;
         }
 
         /// <summary>连续稳定在线满 10 分钟才复位重复断网计数。</summary>
         public static bool ShouldResetRepeat(int confirmedDisconnects, TimeSpan stableFor)
         {
             return confirmedDisconnects > 0 && stableFor.TotalMinutes >= RepeatResetMinutes;
+        }
+
+        public static bool IsAttemptQualified(TimeSpan observed)
+        {
+            return observed.TotalSeconds >= DisconnectAttemptQualifySeconds;
         }
 
         /// <summary>网卡链路是否完整：Up + 可用 IPv4 + 默认网关。</summary>
@@ -488,6 +588,11 @@ namespace LabGuard.Core.Guards
             return false;
         }
 
-        protected override void OnStop() { }
+        protected override void OnStop()
+        {
+            _stopping = true;
+            try { NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged; } catch { }
+            try { NetworkChange.NetworkAvailabilityChanged -= OnNetworkAvailabilityChanged; } catch { }
+        }
     }
 }

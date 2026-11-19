@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
@@ -50,6 +51,8 @@ namespace LabGuard.Core.UI
 
         /// <summary>诊断用：Tick 计数。</summary>
         private int _tickCount;
+        private IntPtr _lastFullscreenWindow = IntPtr.Zero;
+        private DateTime _lastFullscreenMinimize = DateTime.MinValue;
 
         /// <summary>
         /// 老师的密码框正在开着。此时全局键盘钩子必须<b>放行所有按键</b>，
@@ -181,7 +184,7 @@ namespace LabGuard.Core.UI
                     InputLock.KeepAlive();
                     _tickCount++;
                     if (_tickCount % 5 == 1) Log.Info("[遮罩心跳] #" + _tickCount + " netRestored=" + _netRestored);
-                    if (_tickCount % 5 == 1 && !_teacherDialogOpen) ForceTopMost(false);
+                    if (!_teacherDialogOpen) EnforceMaskFront();
                     if (_netRestored) { AutoClose("网络已恢复"); return; }
                     UpdateBottomLine();
                 }
@@ -307,7 +310,7 @@ namespace LabGuard.Core.UI
 
         /// <summary>
         /// WinForms 的 TopMost 在部分全屏/无边框游戏上仍可能被抢 Z 序。
-        /// 首次显示时强制置顶并尝试切前台；之后每 5 秒只重新置顶，不反复激活窗口。
+        /// 首次显示时强制置顶并尝试切前台；之后每秒重新置顶，不反复激活普通窗口。
         /// 独占全屏仍可能覆盖普通窗口，因此游戏进程拦截仍是更可靠的兜底。
         /// </summary>
         private void ForceTopMost(bool activate)
@@ -326,6 +329,66 @@ namespace LabGuard.Core.UI
                 }
             }
             catch (Exception ex) { Log.Debug("[遮罩] 强制置顶失败：" + ex.Message); }
+        }
+
+        /// <summary>
+        /// 每秒重新声明 TopMost；如果前台是全屏应用，则将其最小化后再抢回前台。
+        /// 这对无边框全屏游戏有效；独占全屏仍建议配合游戏进程黑名单。
+        /// </summary>
+        private void EnforceMaskFront()
+        {
+            ForceTopMost(false);
+            if (!Visible || Handle == IntPtr.Zero) return;
+
+            IntPtr foreground = NativeMethods.GetForegroundWindow();
+            if (foreground == IntPtr.Zero || foreground == Handle) return;
+            if (!NativeMethods.IsWindowVisible(foreground) || NativeMethods.IsIconic(foreground)) return;
+
+            NativeMethods.Rect nativeRect;
+            if (!NativeMethods.GetWindowRect(foreground, out nativeRect)) return;
+            var windowRect = Rectangle.FromLTRB(nativeRect.Left, nativeRect.Top,
+                nativeRect.Right, nativeRect.Bottom);
+            Rectangle screenRect;
+            try { screenRect = Screen.FromHandle(foreground).Bounds; }
+            catch { return; }
+            if (!IsFullscreenRect(windowRect, screenRect)) return;
+
+            uint pid;
+            NativeMethods.GetWindowThreadProcessId(foreground, out pid);
+            string processName = "";
+            try
+            {
+                using (Process process = Process.GetProcessById((int)pid))
+                    processName = process.ProcessName;
+            }
+            catch { }
+            if (processName.StartsWith("LabGuard", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(processName, "explorer", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            try { NativeMethods.ShowWindow(foreground, NativeMethods.SwMinimize); } catch { }
+            ForceTopMost(true);
+
+            if (foreground != _lastFullscreenWindow ||
+                (DateTime.Now - _lastFullscreenMinimize).TotalSeconds >= 10)
+            {
+                _lastFullscreenWindow = foreground;
+                _lastFullscreenMinimize = DateTime.Now;
+                Log.Warn("遮罩已最小化前台全屏窗口：" + (string.IsNullOrEmpty(processName) ? "未知进程" : processName));
+            }
+        }
+
+        /// <summary>窗口是否覆盖指定屏幕的主要区域（约 96% 以上）；自检可独立断言。</summary>
+        public static bool IsFullscreenRect(Rectangle window, Rectangle screen)
+        {
+            if (window.Width <= 0 || window.Height <= 0 || screen.Width <= 0 || screen.Height <= 0)
+                return false;
+            int toleranceX = Math.Max(8, screen.Width / 50);
+            int toleranceY = Math.Max(8, screen.Height / 50);
+            return window.Left <= screen.Left + toleranceX &&
+                   window.Top <= screen.Top + toleranceY &&
+                   window.Right >= screen.Right - toleranceX &&
+                   window.Bottom >= screen.Bottom - toleranceY;
         }
 
         // ------------------------------------------------------------------ 网络恢复检测（后台线程）

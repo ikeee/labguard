@@ -109,7 +109,7 @@ namespace LabGuard.Core.Settings
             list.Add(Bool("2、网络与防火墙", "Network.Enabled", "启用网络守护（本组总开关）", null,
                 c => c.Network.Enabled, (c, v) => c.Network.Enabled = (bool)v));
             list.Add(Bool("2、网络与防火墙", "Network.DetectDisconnected", "检测拔网线 / 禁用网卡",
-                "网卡 Down / 无 IPv4 / 无默认网关 / 枚举为空均判离线；前两次确认 60 秒，第三次起 5 秒",
+                "网卡 Down / 无 IPv4 / 无默认网关 / 枚举为空均判离线；断网 2 秒计一次尝试，第 1/2/3 次按 60/30/10 秒确认",
                 c => c.Network.DetectDisconnected, (c, v) => c.Network.DetectDisconnected = (bool)v));
             list.Add(List("2、网络与防火墙", "Network.WatchedInterfaces", "只监控这些网卡（一行一个，留空=自动）",
                 "一体机机房建议只填有线网卡名（如「以太网」）；自动 = 选有默认网关的网卡",

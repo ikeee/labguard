@@ -443,6 +443,7 @@ namespace LabGuard.SelfTest
             try
             {
                 var probe = new LabGuard.Core.UI.DisconnectMaskForm();
+                Check("遮罩窗体默认 TopMost", probe.TopMost);
                 var probeCfg = new GuardConfig().Network;
                 probeCfg.MaskShowTeacherHint = true;
                   probeCfg.UnlockGestureSequence = "L,L,R,R";
@@ -767,12 +768,12 @@ namespace LabGuard.SelfTest
         }
 
         /// <summary>
-        /// v0.07.4 单机版默认值回归：下载默认放行、游戏默认禁用、预热 60 秒、
+        /// v0.07.5 单机版默认值回归：下载默认放行、游戏默认禁用、预热 60 秒、
         /// 以及 Notify 动作不得删除文件。
         /// </summary>
         private static void TestStandaloneDefaults()
         {
-            Console.WriteLine("[8.1] 单机版 v0.07.4 默认值");
+            Console.WriteLine("[8.1] 单机版 v0.07.5 默认值");
             var cfg = new GuardConfig();
             Check("有线固定 IP 默认预热 60 秒", cfg.StartDelaySeconds == 60, cfg.StartDelaySeconds + " 秒");
             Check("浏览器下载默认放行", !cfg.Browser.BlockDownloads);
@@ -783,10 +784,24 @@ namespace LabGuard.SelfTest
             Check("新文件/下载监控默认关闭", !cfg.FileCreation.Enabled);
             Check("Notify 动作不删除文件", !FileCreationGuard.ShouldDelete("Notify"));
             Check("Delete 动作仍会删除文件", FileCreationGuard.ShouldDelete("Delete"));
-            Check("前两次断网使用 60 秒确认",
-                NetworkGuard.ConfirmSecondsFor(0) == 60 && NetworkGuard.ConfirmSecondsFor(1) == 60);
-            Check("第 3 次起断网改用 5 秒确认",
-                NetworkGuard.ConfirmSecondsFor(2) == 5 && NetworkGuard.ConfirmSecondsFor(3) == 5);
+            Check("断网确认阈值 60/30/10 秒",
+                NetworkGuard.ConfirmSecondsFor(0) == 60 &&
+                NetworkGuard.ConfirmSecondsFor(1) == 30 &&
+                NetworkGuard.ConfirmSecondsFor(2) == 10 &&
+                NetworkGuard.ConfirmSecondsFor(99) == 10);
+            Check("断网尝试需持续 2 秒才计数",
+                NetworkGuard.DisconnectAttemptQualifySeconds == 2 &&
+                !NetworkGuard.IsAttemptQualified(TimeSpan.FromSeconds(1.9)) &&
+                NetworkGuard.IsAttemptQualified(TimeSpan.FromSeconds(2)));
+            Check("恢复需要连续 2 次在线采样",
+                NetworkGuard.RestoreConfirmSamples == 2);
+            var screen = new System.Drawing.Rectangle(0, 0, 1920, 1080);
+            Check("全屏窗口判定：覆盖整屏", LabGuard.Core.UI.DisconnectMaskForm.IsFullscreenRect(
+                new System.Drawing.Rectangle(0, 0, 1920, 1080), screen));
+            Check("全屏窗口判定：普通窗口不误判", !LabGuard.Core.UI.DisconnectMaskForm.IsFullscreenRect(
+                new System.Drawing.Rectangle(120, 80, 1200, 700), screen));
+            Check("全屏窗口判定：接近全屏但留有任务栏不误判", !LabGuard.Core.UI.DisconnectMaskForm.IsFullscreenRect(
+                new System.Drawing.Rectangle(0, 0, 1920, 1040), screen));
 
             // 干跑浏览器策略：默认允许下载，但可以清理旧版本留下的限制。
             bool oldDryRun = Log.DryRun;
@@ -891,7 +906,9 @@ namespace LabGuard.SelfTest
             sinceField.SetValue(guard, DateTime.Now.AddMinutes(-2));
             soundField.SetValue(guard, true);
 
-            bool restored = guard.IsWatchedRestored();
+            guard.IsWatchedRestored();              // 第一次在线采样
+            System.Threading.Thread.Sleep(600);
+            bool restored = guard.IsWatchedRestored();   // 连续第二次才允许复位
             if (!restored)
             {
                 Console.WriteLine("  [SKIP] 本机没有已恢复可用 IP 的判据网卡，二次弹遮罩由真机验收");

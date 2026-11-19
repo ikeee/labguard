@@ -9,8 +9,8 @@ namespace LabGuard.Core
         public const string ProductNameZh = "机房管控工具";
         /// <summary>桌面/开始菜单快捷方式显示名。</summary>
         public const string ShortcutName = "LabGuard（机房管控）";
-        /// <summary>当前版本（单机版 v0.07.4：断网判据、下载默认放行与私有解锁通道）。</summary>
-        public const string Version = "0.07.4";
+        /// <summary>当前版本（单机版 v0.07.5：事件驱动断网检测与全屏遮罩置顶）。</summary>
+        public const string Version = "0.07.5";
         public const string RepoUrl = "https://github.com/ikeee/labguard";
     }
 }

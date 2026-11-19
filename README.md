@@ -1,6 +1,6 @@
 # LabGuard
 
-**当前版本：v0.07.4**（2026-11-19，[全部版本](https://github.com/ikeee/labguard/releases)）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
+**当前版本：v0.07.5**（2026-11-19，[全部版本](https://github.com/ikeee/labguard/releases)）· 项目地址：https://github.com/ikeee/labguard · 许可：MIT（见 [LICENSE](LICENSE)）· 更新记录：[CHANGELOG.md](CHANGELOG.md)
 
 > **English TL;DR** — LabGuard is an open-source, self-healing policy guard for Windows PCs in school computer labs
 > (.NET Framework 4.8). It protects the classroom-management client (TopDomain / Red Spider / Ruijie cloud class)
@@ -119,8 +119,8 @@ LabGuard-Setup-vX.XX.exe --silent --password "你的密码123" [--config presets
 | 课堂软件关键服务停止 | 自动 `StartService`（极域 `TopDomainClient*`、噢易教学 `MMPC`、云桌面 `VoiClient`…可自行增删） |
 | 极域频道/自动登录参数被改 | 检测并回写合法值 |
 | 噢易云桌面服务器地址被改 | 监控 `HKLM\SOFTWARE\VoiClient\client\gtserver`：填了期望值就严格写回，留空则只在明显非法时报告（不猜着写） |
-| 拔网线 / 禁用网卡 | `NetworkGuard`：网卡 Down / 无 IPv4 / 无默认网关 / 枚举为空均判离线；前两次持续 **60 秒**确认，第 3 次起同一次登录内缩短为 **5 秒**；稳定联网 10 分钟后复位（有线固定 IP 机房默认 60 秒预热，可调到 0；默认只提示，可选锁屏/关机） |
-| 断网**全屏遮罩**（屏保式） | 纯深色底 + 大字提示「网络已断开」+ 具体原因 + 机位号 + 已断开时长（可在设置里改成"随机底图"）；**吞掉所有键**，但**插回网线 10 秒内自动消失**（不需要老师）；管理员另有内置解锁通道，界面不提示；密码通道仍保留；
+| 拔网线 / 禁用网卡 | `NetworkGuard`：网卡 Down / 无 IPv4 / 无默认网关 / 枚举为空均判离线；监听网络变化并每 2 秒兜底探测；断网持续 2 秒即计一次尝试；第 1/2/3 次分别按 **60/30/10 秒**确认，第 4 次以后继续按 10 秒；稳定联网 10 分钟后复位（默认只提示，可选锁屏/关机） |
+| 断网**全屏遮罩**（屏保式） | 纯深色底 + 大字提示「网络已断开」+ 具体原因 + 机位号 + 已断开时长（可在设置里改成"随机底图"）；**吞掉所有键**，但**插回网线并连续确认在线后自动消失**（不需要老师）；每秒重新置顶，并会最小化前台全屏窗口；管理员另有内置解锁通道，界面不提示；密码通道仍保留；
 `LabGuard.Agent.exe --preview-mask 8` 可先预览。
 **遮罩上不提示解锁方式**（遮罩是给学生看的，把钥匙挂在锁上会让学生照着屏幕解开）。
 **遮罩上不提示解锁方式**（遮罩是给学生看的，把钥匙挂在锁上会让学生照着屏幕解开）。
@@ -299,7 +299,7 @@ LabGuard.Agent.exe --unlock-drill --gesture --no-lock :: 管理员内置通道�
 
 ### 8.1 学生拔掉网线后：全屏遮罩
 
-纯深色底（可在设置里改成"随机底图"，**都只是遮罩自己画，不动系统壁纸**），按任何键都退不出，插回网线 10 秒内自动恢复；没插回来则按设置响鸣（默认 60 秒后嘀嘀嘀 ×3）。
+纯深色底（可在设置里改成"随机底图"，**都只是遮罩自己画，不动系统壁纸**），按任何键都退不出，插回网线并连续确认在线后自动恢复；没插回来则按设置响鸣（默认 60 秒后嘀嘀嘀 ×3）。遮罩每秒重新置顶，并会最小化前台全屏窗口。
 
 <img src="docs/screenshots/disconnect-mask.png" width="820" alt="断网全屏遮罩">
 
